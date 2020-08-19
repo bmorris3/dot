@@ -6,4 +6,6 @@
 from ._astropy_init import *   # noqa
 # ----------------------------------------------------------------------------
 
-__all__ = []
+from .model import *
+from .vis import *
+from .io import *
