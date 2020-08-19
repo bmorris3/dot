@@ -184,8 +184,8 @@ class Model(object):
                                    parallel=parallel, cores=cores, **kwargs)
         return trace
 
-    def sample_nuts(self, draws, start=None, cores=64, target_accept=0.99,
-                    **kwargs):
+    def sample_nuts(self, trace_smc, draws, cores=64,
+                    target_accept=0.99, **kwargs):
         """
         Sample the posterior distribution of the model given the data using
         the No U-Turn Sampler.
@@ -205,6 +205,7 @@ class Model(object):
         self._check_model()
         with DisableLogger(self.verbose):
             with self.model:
-                trace = pm.sample(draws, start=start, cores=cores,
+                trace = pm.sample(draws,
+                                  start=trace_smc.point(-1), cores=cores,
                                   target_accept=target_accept, **kwargs)
         return trace
