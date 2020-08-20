@@ -6,6 +6,7 @@ import os
 import matplotlib.pyplot as plt
 from lightkurve import search_lightcurvefile
 from dot import Model, save_results, load_results, ab_dor_example_lc
+from dot.plots import posterior_shear, movie
 
 # lightkurve parameters
 target = "AB Dor"
@@ -20,19 +21,19 @@ draws_smc = 100
 draws_nuts = 100
 tune = 100
 cores = 4
-skip_n_points = 5
+skip_n_points = 5  # skip every n photometric measurements
+limit_duration = 2  # days
 
 if __name__ == '__main__':
     # If there isn't already a results directory, create one:
     if not os.path.exists(results_dir):
         # Get the light curve from lightkurve
         # print(f'Load the light curve for {target} from lightkurve...')
-        # lcf = search_lightcurvefile(
+        # lc = search_lightcurvefile(
         #     target=target,
         #     mission=mission,
         #     sector=sector
-        # ).download_all()
-        # lc = lcf.PDCSAP_FLUX.stitch()
+        # ).download_all().PDCSAP_FLUX.stitch()
 
         # Fetch example light curve from the package:
         lc = ab_dor_example_lc()
@@ -45,7 +46,7 @@ if __name__ == '__main__':
             n_spots=n_spots,
             skip_n_points=skip_n_points,
             min_time=lc.time.min(),
-            max_time=lc.time.min() + 5,
+            max_time=lc.time.min() + limit_duration,
         )
 
         print('Running SMC...')
@@ -62,8 +63,6 @@ if __name__ == '__main__':
     else:
         m, trace_nuts, summary = load_results(results_dir)
 
-    from dot.plots import posterior_shear, movie
-
     posterior_shear(m, trace_nuts)
-    movie(os.path.join('test-example', 'movie.mp4'), m, trace_nuts, xsize=50)
+    movie(results_dir, m, trace_nuts, xsize=50)
     plt.show()

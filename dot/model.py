@@ -226,7 +226,7 @@ class Model(object):
                                    parallel=parallel, cores=cores, **kwargs)
         return trace
 
-    def sample_nuts(self, trace_smc, draws, cores=64,
+    def sample_nuts(self, trace_smc, draws, cores=96,
                     target_accept=0.99, **kwargs):
         """
         Sample the posterior distribution of the model given the data using

@@ -1,9 +1,10 @@
+import os
 import matplotlib.pyplot as plt
-from corner import corner as dfm_corner
-import pymc3 as pm
 import numpy as np
 from matplotlib.gridspec import GridSpec
 from matplotlib import animation
+from corner import corner as dfm_corner
+import pymc3 as pm
 
 __all__ = ['corner', 'posterior_predictive', 'movie']
 
@@ -58,10 +59,13 @@ def posterior_shear(model, trace, path=None):
     return fig, ax
 
 
-def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
+def movie(results_dir, model, trace, xsize=250, fps=10,
+          artifical_photometry=False, posterior_samples=10,
+          dpi=250, u1=0.4, u2=0.2):
     """
     Plot an animation of the light curve and the rotating stellar surface.
     """
+    # Get median parameter values for system setup:
     n_spots = model.n_spots
     shear = np.median(trace[f'{n_spots}_shear'])
     complement_to_inclination = np.median(trace[f'{n_spots}_comp_inc'])
@@ -78,7 +82,8 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
 
     spot_props = np.median(samples[:, 4:], axis=0).reshape((n_spots,
                                                             parameters_per_spot))
-    spot_model = 1
+
+    # Define the spot properties
     spot_lons = spot_props[:, 0]
     spot_lats = spot_props[:, 1]
     spot_rads = spot_props[:, 2]
@@ -91,7 +96,7 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
 
     # Compute a simple, artistic limb-darkening factor
     r = np.hypot(xx, yy)
-    ld = (1 - 0.4 * r ** 2 - 0.2 * r) / (1 - 0.4 / 3 - 0.2 / 6)
+    ld = (1 - u1 * r ** 2 - u2 * r) / (1 - u1 / 3 - u2 / 6)
 
     # Compute a mask for pixels that fall on the star
     on_star = np.hypot(xx, yy) <= 1
@@ -99,13 +104,14 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
     m[..., :] = (ld * on_star.astype(int))[..., None]
 
     # For each spot:
+    spot_model = 1
     for spot_ind in range(n_spots):
-        # Compute the spot position as a function of time:
-        period_i = eq_period / (1 - shear * np.sin(
-            spot_lats[spot_ind] - np.pi / 2) ** 2)
+        # Make everything spin
+        period_i = eq_period / (1 - shear * np.sin(spot_lats[spot_ind] - np.pi / 2) ** 2)
         phi = 2 * np.pi / period_i * (model.lc.time[model.mask][::model.skip_n_points] -
                                       model.lc.time[model.mask].mean()) - spot_lons[spot_ind]
 
+        # Compute the spot position as a function of time:
         spot_position_x = (np.cos(phi - np.pi / 2) * np.sin(complement_to_inclination) *
                            np.sin(spot_lats[spot_ind]) +
                            np.cos(complement_to_inclination) * np.cos(spot_lats[spot_ind]))
@@ -138,7 +144,7 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
 
     # Draw samples from the posterior in the light curve domain
     with model:
-        ppc = pm.sample_posterior_predictive(trace, samples=10)
+        ppc = pm.sample_posterior_predictive(trace, samples=posterior_samples)
 
     print(f"Generating animation with {m.shape[2]} frames:")
     gs = GridSpec(1, 5)
@@ -146,12 +152,12 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
     # First set up the figure, the axis, and the plot element we want to animate
     fig = plt.figure(
         figsize=(7, 2),
-        dpi=250
+        dpi=dpi
     )
     gs = GridSpec(1, 5, figure=fig)
 
     ax_image = plt.subplot(gs[0:2])
-
+    # Plot the initial image (first frame)
     im = ax_image.imshow(m[..., 0],
              aspect='equal',
              cmap=plt.cm.copper,
@@ -162,6 +168,7 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
          )
     ax_image.axis('off')
 
+    # Plot the light curve
     ax_lc = plt.subplot(gs[2:])
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
                ppc[f'{n_spots}_obs'].T,
@@ -170,6 +177,7 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
                model.lc.flux[model.mask][::model.skip_n_points],
                '.', color='k')
 
+    # Optionally plot the "synthetic photometry" of the pixelated visualization
     if artifical_photometry:
         artifical_lc = m.sum(axis=(0, 1))
         ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
@@ -202,7 +210,8 @@ def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
         interval=1000 / fps,  # in milliseconds
     )
 
-    anim.save(path, fps=fps, extra_args=['-vcodec', 'libx264'])
+    anim.save(os.path.join(results_dir, 'movie.mp4'),
+              fps=fps, extra_args=['-vcodec', 'libx264'])
     print('done')
 
-    return m
+    return fig, m
