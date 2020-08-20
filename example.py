@@ -5,7 +5,7 @@ conda install mkl-service
 import os
 import matplotlib.pyplot as plt
 from lightkurve import search_lightcurvefile
-from dot import Model, save_results, load_results, corner, posterior_predictive
+from dot import Model, save_results, load_results
 
 # lightkurve parameters
 target = "AB Dor"
@@ -20,27 +20,29 @@ draws_smc = 100
 draws_nuts = 100
 tune = 100
 cores = 4
-
+skip_n_points = 5
 
 if __name__ == '__main__':
-    # Get the light curve from lightkurve
-    print(f'Load the light curve for {target} from lightkurve...')
-    lcf = search_lightcurvefile(
-        target=target,
-        mission=mission,
-        sector=sector
-    ).download_all()
-    lc = lcf.PDCSAP_FLUX.stitch()
-
     # If there isn't already a results directory, create one:
     if not os.path.exists(results_dir):
+        # Get the light curve from lightkurve
+        print(f'Load the light curve for {target} from lightkurve...')
+        lcf = search_lightcurvefile(
+            target=target,
+            mission=mission,
+            sector=sector
+        ).download_all()
+        lc = lcf.PDCSAP_FLUX.stitch()
+
         print('Constructing model...')
         # Construct an instance of `Model` (this is surprisingly expensive)
         m = Model(
             light_curve=lc,
             rotation_period=rotation_period,
             n_spots=n_spots,
-            skip_n_points=50
+            skip_n_points=skip_n_points,
+            min_time=lc.time.min(),
+            max_time=lc.time.min() + 5,
         )
 
         print('Running SMC...')
@@ -57,8 +59,8 @@ if __name__ == '__main__':
     else:
         m, trace_nuts = load_results(results_dir)
 
-    corner(trace_nuts)
+    from dot.plots import posterior_shear, posterior_predictive
+
+    posterior_shear(m, trace_nuts)
     posterior_predictive(m, trace_nuts)
     plt.show()
-
-print('Done.')

@@ -4,6 +4,7 @@ import pymc3 as pm
 
 __all__ = ['corner', 'posterior_predictive']
 
+
 def corner(trace, **kwargs):
     """
     Make a corner plot
@@ -16,7 +17,8 @@ def posterior_predictive(model, trace, samples=100, **kwargs):
     Take draws from the posterior predictive given a trace and a model.
     """
     with model.model:
-        ppc = pm.sample_posterior_predictive(trace, samples=samples)
+        ppc = pm.sample_posterior_predictive(trace, samples=samples,
+                                             **kwargs)
 
     fig, ax = plt.subplots(figsize=(10, 2.5))
     plt.errorbar(model.lc.time,
@@ -24,9 +26,22 @@ def posterior_predictive(model, trace, samples=100, **kwargs):
                  model.lc.flux_err,
                  fmt='.', color='k', ecolor='silver')
 
-    plt.plot(model.lc.time[::model.skip_n_points],
+    plt.plot(model.lc.time[model.mask][::model.skip_n_points],
              ppc[f'{model.n_spots}_obs'].T,
              color='DodgerBlue', lw=2, alpha=0.1)
 
-    plt.gca().set(xlabel='Time [d]', ylabel='Flux')
+    plt.gca().set(xlabel='Time [d]', ylabel='Flux',
+                  xlim=[model.lc.time[model.mask].min(),
+                        model.lc.time[model.mask].max()])
+    return fig, ax
+
+def posterior_shear(model, trace):
+    fig, ax = plt.subplots(figsize=(4, 3))
+    ax.hist(trace[f'{model.n_spots}_shear'],
+            bins=25,
+            range=[0, 0.6],
+            color='k')
+    ax.set(xlabel='Shear $\\alpha$')
+    for sp in ['right', 'top']:
+        ax.spines[sp].set_visible(False)
     return fig, ax

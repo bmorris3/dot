@@ -7,5 +7,4 @@ from ._astropy_init import *   # noqa
 # ----------------------------------------------------------------------------
 
 from .model import *
-from .vis import *
 from .io import *
