@@ -37,15 +37,25 @@ class Model(object):
         ----------
         light_curve : `~lightkurve.LightCurve`
         rotation_period : float
+            Stellar rotation period
         n_spots : int
-        skip_n_points : int
+            Number of spots
         latitude_cutoff : float
+            Don't place spots above/below this number of degrees from the pole
         scale_error : float
+            Scale up the errorbars by a factor of `scale_error`
         verbose : bool
+            Allow PyMC3 dialogs to print to stdout
+        partition_lon : bool
+            Enforce strict partitions on star in longitude for sampling
+        skip_n_points : int
+            Skip every n points for faster runs
         min_time : float
+            Minimum time to consider in the model
         max_time : float
+            Maximum time to consider in the model
         contrast : float or None
-            If `None`, fit for the contrast of each spot independently
+            Starspot contrast
         """
         self.lc = light_curve
         self.pymc_model = None
@@ -94,12 +104,19 @@ class Model(object):
         Parameters
         ----------
         rotation_period : float
+            Stellar rotation period
         n_spots : int
+            Number of spots
         latitude_cutoff : float
+            Don't place spots above/below this number of degrees from the pole
         scale_error : float
+            Scale up the errorbars by a factor of `scale_error`
         verbose : bool
+            Allow PyMC3 dialogs to print to stdout
         partition_lon : bool
+            Enforce strict partitions on star in longitude for sampling
         contrast : float or None
+            Starspot contrast
         """
         with DisableLogger(verbose):
             with pm.Model(name=f'{n_spots}') as model:
@@ -211,9 +228,13 @@ class Model(object):
         Parameters
         ----------
         draws : int
+            Draws for the SMC sampler
         random_seed : int
+            Random seed
         parallel : bool
+            If True, run in parallel
         cores : int
+            If `parallel`, run on this many cores
 
         Returns
         -------
@@ -234,15 +255,19 @@ class Model(object):
 
         Parameters
         ----------
+        trace_smc : `~pymc.MultiTrace`
+            Results from the SMC sampler
         draws : int
-        start : `~pymc.MultiTrace` or None
+            Draws for the SMC sampler
         cores : int
+            Run on this many cores
         target_accept : float
+            Increase this number up to unity to decrease divergences
 
         Returns
         -------
         trace : `~pymc.MultiTrace`
-
+            Results of the NUTS sampler
         """
         self._check_model()
         with DisableLogger(self.verbose):

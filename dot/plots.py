@@ -11,7 +11,12 @@ __all__ = ['corner', 'posterior_predictive', 'movie']
 
 def corner(trace, **kwargs):
     """
-    Make a corner plot
+    Make a corner plot from a trace
+
+    Parameters
+    ----------
+    trace : `~pymc3.MultiTrace`
+        Trace from SMC/NUTS
     """
     return dfm_corner(pm.trace_to_dataframe(trace), **kwargs)
 
@@ -19,6 +24,22 @@ def corner(trace, **kwargs):
 def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
     """
     Take draws from the posterior predictive given a trace and a model.
+
+    Parameters
+    ----------
+    model : `~dot.Model`
+        Model object
+    trace : `~pymc3.MultiTrace`
+        Trace from SMC/NUTS
+    samples : int
+        Number of posterior predictive samples to draw
+    path : str or None
+        Save the figure to this path
+
+    Returns
+    -------
+    fig, ax : `~matplotlib.figure.Figure`, `~matplotlib.axes.Axes`
+        Resulting figure and axis
     """
     with model:
         ppc = pm.sample_posterior_predictive(trace, samples=samples,
@@ -45,6 +66,18 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
 def posterior_shear(model, trace, path=None):
     """
     Plot the posterior distribution for the stellar differential rotation shear.
+
+    Parameters
+    ----------
+    model : `~dot.Model`
+        Model object
+    trace : `~pymc3.MultiTrace`
+        Trace from SMC/NUTS
+
+    Returns
+    -------
+    fig, ax : `~matplotlib.figure.Figure`, `~matplotlib.axes.Axes`
+        Resulting figure and axis
     """
     fig, ax = plt.subplots(figsize=(4, 3))
     ax.hist(trace[f'{model.n_spots}_shear'],
@@ -64,6 +97,37 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
           dpi=250, u1=0.4, u2=0.2):
     """
     Plot an animation of the light curve and the rotating stellar surface.
+
+    Parameters
+    ----------
+    results_dir : str
+        Save movie to this directory
+    model : `~dot.Model`
+        Model object
+    trace : `~pymc3.MultiTrace`
+        Trace from SMC/NUTS
+    xsize : int
+        Number of pixels on a side in the pixelated stellar image
+    fps : int
+        Frames per second in the finished movie
+    artifical_photometry : bool
+        Plot a curve in red showing the sum of the pixel intensities from the
+        pixelated stellar image (useful to sanity check the animation)
+    posterior_samples : int
+        Number of posterior samples to draw and plot on the movie in blue
+    dpi : int
+        Dots per inch (increase this for higher resolution movies)
+    u1 : float
+        Artistic limb-darkening parameter one
+    u2 : float
+        Artistic limb-darkening parameter two
+
+    Returns
+    -------
+    fig : `~matplotlib.figure.Figure`
+        Final static frame of movie
+    m : `~numpy.ndarray`
+        Pixelated stellar image with shape (xsize, xsize, len(times))
     """
     # Get median parameter values for system setup:
     n_spots = model.n_spots

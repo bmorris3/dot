@@ -1,15 +1,13 @@
 """
 conda install mkl-service
 """
-
 import os
 import matplotlib.pyplot as plt
-from lightkurve import search_lightcurvefile
 from dot import Model, save_results, load_results, ab_dor_example_lc
 from dot.plots import posterior_shear, movie
 
 # lightkurve parameters
-target = "AB Dor"
+target = 'AB Dor'
 mission = 'TESS'
 sector = 1
 
@@ -29,6 +27,7 @@ if __name__ == '__main__':
     if not os.path.exists(results_dir):
         # Get the light curve from lightkurve
         # print(f'Load the light curve for {target} from lightkurve...')
+        # from lightkurve import search_lightcurvefile
         # lc = search_lightcurvefile(
         #     target=target,
         #     mission=mission,
