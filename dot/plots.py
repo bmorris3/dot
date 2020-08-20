@@ -19,7 +19,7 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
     """
     Take draws from the posterior predictive given a trace and a model.
     """
-    with model.model:
+    with model:
         ppc = pm.sample_posterior_predictive(trace, samples=samples,
                                              **kwargs)
 
@@ -58,7 +58,7 @@ def posterior_shear(model, trace, path=None):
     return fig, ax
 
 
-def movie(path, model, trace, xsize=250):
+def movie(path, model, trace, xsize=250, fps=10, artifical_photometry=False):
     """
     Plot an animation of the light curve and the rotating stellar surface.
     """
@@ -73,7 +73,8 @@ def movie(path, model, trace, xsize=250):
         contrast = model.contrast
     else:
         # TODO: implement floating contrasts
-        raise NotImplementedError('TODO: Need to implement floating contrast model')
+        raise NotImplementedError('TODO: Need to implement floating contrast '
+                                  'model')
 
     spot_props = np.median(samples[:, 4:], axis=0).reshape((n_spots,
                                                             parameters_per_spot))
@@ -81,60 +82,65 @@ def movie(path, model, trace, xsize=250):
     spot_lons = spot_props[:, 0]
     spot_lats = spot_props[:, 1]
     spot_rads = spot_props[:, 2]
+
+    # Create grid of pixels on which we will pixelate the spotted star:
     xgrid = np.linspace(-1, 1, xsize)
     xx, yy = np.meshgrid(xgrid, xgrid)
-    m = np.zeros((xsize, xsize, len(model.lc.time[model.mask][::model.skip_n_points])))
+    m = np.zeros((xsize, xsize,
+                  len(model.lc.time[model.mask][::model.skip_n_points])))
 
+    # Compute a simple, artistic limb-darkening factor
     r = np.hypot(xx, yy)
     ld = (1 - 0.4 * r ** 2 - 0.2 * r) / (1 - 0.4 / 3 - 0.2 / 6)
 
+    # Compute a mask for pixels that fall on the star
     on_star = np.hypot(xx, yy) <= 1
+    # Set the pixel intensities to the limb-darkened values
     m[..., :] = (ld * on_star.astype(int))[..., None]
 
+    # For each spot:
     for spot_ind in range(n_spots):
+        # Compute the spot position as a function of time:
         period_i = eq_period / (1 - shear * np.sin(
             spot_lats[spot_ind] - np.pi / 2) ** 2)
         phi = 2 * np.pi / period_i * (model.lc.time[model.mask][::model.skip_n_points] -
-                                      model.lc.time[model.mask].mean()) - spot_lons[
-            spot_ind]
+                                      model.lc.time[model.mask].mean()) - spot_lons[spot_ind]
 
-        spot_position_x = (np.cos(phi - np.pi / 2) * np.sin(
-            complement_to_inclination) * np.sin(spot_lats[spot_ind]) +
-                           np.cos(complement_to_inclination) * np.cos(
-                    spot_lats[spot_ind]))
+        spot_position_x = (np.cos(phi - np.pi / 2) * np.sin(complement_to_inclination) *
+                           np.sin(spot_lats[spot_ind]) +
+                           np.cos(complement_to_inclination) * np.cos(spot_lats[spot_ind]))
         spot_position_y = -np.sin(phi - np.pi / 2) * np.sin(spot_lats[spot_ind])
-        spot_position_z = (np.cos(spot_lats[spot_ind]) * np.sin(
-            complement_to_inclination) - np.sin(phi) *
-                           np.cos(complement_to_inclination) * np.sin(
-                    spot_lats[spot_ind]))
+        spot_position_z = (np.cos(spot_lats[spot_ind]) * np.sin(complement_to_inclination) -
+                           np.sin(phi) * np.cos(complement_to_inclination) * np.sin(spot_lats[spot_ind]))
 
+        # Compute the distance from the spot to the center of the stellar disk
         rsq = spot_position_x ** 2 + spot_position_y ** 2
-        spot_model -= spot_rads[spot_ind] ** 2 * (1 - model.contrast) * np.where(
-            spot_position_z > 0, np.sqrt(1 - rsq), 0)
+
+        # Foreshorten the spots as they approach the limb,
+        # mask the spots that land on the opposite stellar hemisphere
+        spot_model -= (spot_rads[spot_ind] ** 2 * (1 - model.contrast) *
+                       np.where(spot_position_z > 0, np.sqrt(1 - rsq), 0))
 
         foreshorten_semiminor_axis = np.sqrt(1 - rsq)
 
+        # Compute pixels that fall on a spot:
         a = spot_rads[spot_ind]
-        b = spot_rads[spot_ind] * foreshorten_semiminor_axis  # Semi-minor axis
-        A = np.pi / 2 + np.arctan2(spot_position_y, spot_position_x)[None, None,
-                        :]  # Semi-major axis rotation
-        on_spot = (((xx[:, :, None] - spot_position_x[None, None, :]) * np.cos(
-            A) +
-                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.sin(
-                    A)) ** 2 / a ** 2 +
-                   ((xx[:, :, None] - spot_position_x[None, None, :]) * np.sin(
-                       A) -
-                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.cos(
-                               A)) ** 2 / b ** 2 <= 1)
+        # Semi-minor axis
+        b = spot_rads[spot_ind] * foreshorten_semiminor_axis
+        # Semi-major axis rotation
+        A = np.pi / 2 + np.arctan2(spot_position_y, spot_position_x)[None, None, :]
+        on_spot = (((xx[:, :, None] - spot_position_x[None, None, :]) * np.cos(A) +
+                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.sin(A)) ** 2 / a ** 2 +
+                   ((xx[:, :, None] - spot_position_x[None, None, :]) * np.sin(A) -
+                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.cos(A)) ** 2 / b ** 2 <= 1)
         on_spot *= spot_position_z[None, None, :] > 0
         m[on_spot] *= 1 - contrast
 
-    with model.model:
+    # Draw samples from the posterior in the light curve domain
+    with model:
         ppc = pm.sample_posterior_predictive(trace, samples=10)
 
     print(f"Generating animation with {m.shape[2]} frames:")
-    # Frames per second
-    fps = 10
     gs = GridSpec(1, 5)
 
     # First set up the figure, the axis, and the plot element we want to animate
@@ -147,13 +153,13 @@ def movie(path, model, trace, xsize=250):
     ax_image = plt.subplot(gs[0:2])
 
     im = ax_image.imshow(m[..., 0],
-                         aspect='equal',
-                         cmap=plt.cm.copper,
-                         extent=[-1, 1, -1, 1],
-                         vmin=0,
-                         vmax=1,
-                         origin='lower'
-                         )
+             aspect='equal',
+             cmap=plt.cm.copper,
+             extent=[-1, 1, -1, 1],
+             vmin=0,
+             vmax=1,
+             origin='lower'
+         )
     ax_image.axis('off')
 
     ax_lc = plt.subplot(gs[2:])
@@ -163,6 +169,12 @@ def movie(path, model, trace, xsize=250):
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
                model.lc.flux[model.mask][::model.skip_n_points],
                '.', color='k')
+
+    if artifical_photometry:
+        artifical_lc = m.sum(axis=(0, 1))
+        ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
+                   artifical_lc/artifical_lc.mean(), color='r')
+
     ax_lc.set(xlabel='Time', ylabel='Flux')
 
     for sp in ['right', 'top']:
@@ -187,7 +199,7 @@ def movie(path, model, trace, xsize=250):
         fig,
         animate_func,
         frames=m.shape[2],
-        interval=1000 / fps,  # in ms
+        interval=1000 / fps,  # in milliseconds
     )
 
     anim.save(path, fps=fps, extra_args=['-vcodec', 'libx264'])

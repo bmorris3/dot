@@ -13,6 +13,7 @@ def save_results(name, model, trace, summary):
     """
     with open(os.path.join(name, 'model.pkl'), 'wb') as buff:
         pickle.dump(model, buff)
+
     with open(os.path.join(name, 'trace_nuts.pkl'), 'wb') as buff:
         pickle.dump(trace, buff)
 

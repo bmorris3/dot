@@ -22,7 +22,8 @@ class DisableLogger():
             logging.disable(logging.CRITICAL)
 
     def __exit__(self, a, b, c):
-        logging.disable(logging.NOTSET)
+        if not self.verbose:
+            logging.disable(logging.NOTSET)
 
 
 class Model(object):
@@ -47,7 +48,7 @@ class Model(object):
             If `None`, fit for the contrast of each spot independently
         """
         self.lc = light_curve
-        self.model = None
+        self.pymc_model = None
         self.skip_n_points = skip_n_points
         self.rotation_period = rotation_period
         self.n_spots = n_spots
@@ -176,16 +177,30 @@ class Model(object):
                           sigma=scale_error *
                                 self.lc.flux_err[self.mask][::self.skip_n_points],
                           observed=self.lc.flux[self.mask][::self.skip_n_points])
-        self.model = model
-        return self.model
+
+        self.pymc_model = model
+        return self.pymc_model
+
+    def __enter__(self):
+        """
+        Mocking the pymc3 context manager for models
+        """
+        self._check_model()
+        return self.pymc_model.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Mocking the pymc3 context manager for models
+        """
+        self._check_model()
+        return self.pymc_model.__exit__(exc_type, exc_val, exc_tb)
 
     def _check_model(self):
         """
         Check that a model instance exists on this object
         """
-        if self.model is None:
-            raise ValueError('Must first call `Model.construct_model` before '
-                             'specifying a sampler.')
+        if self.pymc_model is None:
+            raise ValueError('Must first call `Model.construct_model` first.')
 
     def sample_smc(self, draws, random_seed=42, parallel=True, cores=1,
                    **kwargs):
@@ -206,7 +221,7 @@ class Model(object):
         """
         self._check_model()
         with DisableLogger(self.verbose):
-            with self.model:
+            with self.pymc_model:
                 trace = sample_smc(draws, random_seed=random_seed,
                                    parallel=parallel, cores=cores, **kwargs)
         return trace
@@ -231,7 +246,7 @@ class Model(object):
         """
         self._check_model()
         with DisableLogger(self.verbose):
-            with self.model:
+            with self.pymc_model:
                 trace = pm.sample(draws,
                                   start=trace_smc.point(-1), cores=cores,
                                   target_accept=target_accept, **kwargs)
