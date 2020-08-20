@@ -1,8 +1,11 @@
 import matplotlib.pyplot as plt
 from corner import corner as dfm_corner
 import pymc3 as pm
+import numpy as np
+from matplotlib.gridspec import GridSpec
+from matplotlib import animation
 
-__all__ = ['corner', 'posterior_predictive']
+__all__ = ['corner', 'posterior_predictive', 'movie']
 
 
 def corner(trace, **kwargs):
@@ -12,7 +15,7 @@ def corner(trace, **kwargs):
     return dfm_corner(pm.trace_to_dataframe(trace), **kwargs)
 
 
-def posterior_predictive(model, trace, samples=100, **kwargs):
+def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
     """
     Take draws from the posterior predictive given a trace and a model.
     """
@@ -33,9 +36,15 @@ def posterior_predictive(model, trace, samples=100, **kwargs):
     plt.gca().set(xlabel='Time [d]', ylabel='Flux',
                   xlim=[model.lc.time[model.mask].min(),
                         model.lc.time[model.mask].max()])
+    if path is not None:
+        fig.savefig(path, bbox_inches='tight')
     return fig, ax
 
-def posterior_shear(model, trace):
+
+def posterior_shear(model, trace, path=None):
+    """
+    Plot the posterior distribution for the stellar differential rotation shear.
+    """
     fig, ax = plt.subplots(figsize=(4, 3))
     ax.hist(trace[f'{model.n_spots}_shear'],
             bins=25,
@@ -44,4 +53,144 @@ def posterior_shear(model, trace):
     ax.set(xlabel='Shear $\\alpha$')
     for sp in ['right', 'top']:
         ax.spines[sp].set_visible(False)
+    if path is not None:
+        fig.savefig(path, bbox_inches='tight')
     return fig, ax
+
+
+def movie(path, model, trace, xsize=250):
+    """
+    Plot an animation of the light curve and the rotating stellar surface.
+    """
+    n_spots = model.n_spots
+    shear = np.median(trace[f'{n_spots}_shear'])
+    complement_to_inclination = np.median(trace[f'{n_spots}_comp_inc'])
+    eq_period = np.median(trace[f'{n_spots}_P_eq'])
+
+    samples = pm.trace_to_dataframe(trace).values
+    if isinstance(model.contrast, float):
+        parameters_per_spot = 3
+        contrast = model.contrast
+    else:
+        # TODO: implement floating contrasts
+        raise NotImplementedError('TODO: Need to implement floating contrast model')
+
+    spot_props = np.median(samples[:, 4:], axis=0).reshape((n_spots,
+                                                            parameters_per_spot))
+    spot_model = 1
+    spot_lons = spot_props[:, 0]
+    spot_lats = spot_props[:, 1]
+    spot_rads = spot_props[:, 2]
+    xgrid = np.linspace(-1, 1, xsize)
+    xx, yy = np.meshgrid(xgrid, xgrid)
+    m = np.zeros((xsize, xsize, len(model.lc.time[model.mask][::model.skip_n_points])))
+
+    r = np.hypot(xx, yy)
+    ld = (1 - 0.4 * r ** 2 - 0.2 * r) / (1 - 0.4 / 3 - 0.2 / 6)
+
+    on_star = np.hypot(xx, yy) <= 1
+    m[..., :] = (ld * on_star.astype(int))[..., None]
+
+    for spot_ind in range(n_spots):
+        period_i = eq_period / (1 - shear * np.sin(
+            spot_lats[spot_ind] - np.pi / 2) ** 2)
+        phi = 2 * np.pi / period_i * (model.lc.time[model.mask][::model.skip_n_points] -
+                                      model.lc.time[model.mask].mean()) - spot_lons[
+            spot_ind]
+
+        spot_position_x = (np.cos(phi - np.pi / 2) * np.sin(
+            complement_to_inclination) * np.sin(spot_lats[spot_ind]) +
+                           np.cos(complement_to_inclination) * np.cos(
+                    spot_lats[spot_ind]))
+        spot_position_y = -np.sin(phi - np.pi / 2) * np.sin(spot_lats[spot_ind])
+        spot_position_z = (np.cos(spot_lats[spot_ind]) * np.sin(
+            complement_to_inclination) - np.sin(phi) *
+                           np.cos(complement_to_inclination) * np.sin(
+                    spot_lats[spot_ind]))
+
+        rsq = spot_position_x ** 2 + spot_position_y ** 2
+        spot_model -= spot_rads[spot_ind] ** 2 * (1 - model.contrast) * np.where(
+            spot_position_z > 0, np.sqrt(1 - rsq), 0)
+
+        foreshorten_semiminor_axis = np.sqrt(1 - rsq)
+
+        a = spot_rads[spot_ind]
+        b = spot_rads[spot_ind] * foreshorten_semiminor_axis  # Semi-minor axis
+        A = np.pi / 2 + np.arctan2(spot_position_y, spot_position_x)[None, None,
+                        :]  # Semi-major axis rotation
+        on_spot = (((xx[:, :, None] - spot_position_x[None, None, :]) * np.cos(
+            A) +
+                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.sin(
+                    A)) ** 2 / a ** 2 +
+                   ((xx[:, :, None] - spot_position_x[None, None, :]) * np.sin(
+                       A) -
+                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.cos(
+                               A)) ** 2 / b ** 2 <= 1)
+        on_spot *= spot_position_z[None, None, :] > 0
+        m[on_spot] *= 1 - contrast
+
+    with model.model:
+        ppc = pm.sample_posterior_predictive(trace, samples=10)
+
+    print(f"Generating animation with {m.shape[2]} frames:")
+    # Frames per second
+    fps = 10
+    gs = GridSpec(1, 5)
+
+    # First set up the figure, the axis, and the plot element we want to animate
+    fig = plt.figure(
+        figsize=(7, 2),
+        dpi=250
+    )
+    gs = GridSpec(1, 5, figure=fig)
+
+    ax_image = plt.subplot(gs[0:2])
+
+    im = ax_image.imshow(m[..., 0],
+                         aspect='equal',
+                         cmap=plt.cm.copper,
+                         extent=[-1, 1, -1, 1],
+                         vmin=0,
+                         vmax=1,
+                         origin='lower'
+                         )
+    ax_image.axis('off')
+
+    ax_lc = plt.subplot(gs[2:])
+    ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
+               ppc[f'{n_spots}_obs'].T,
+               color='DodgerBlue', alpha=0.05)
+    ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
+               model.lc.flux[model.mask][::model.skip_n_points],
+               '.', color='k')
+    ax_lc.set(xlabel='Time', ylabel='Flux')
+
+    for sp in ['right', 'top']:
+        ax_lc.spines[sp].set_visible(False)
+    time_marker = ax_lc.axvline(model.lc.time[model.mask][::model.skip_n_points][0],
+                                ls='--', color='gray', zorder=-10)
+
+    def animate_func(ii):
+        if ii % fps == 0:
+            print('.', end='')
+
+        im.set_array(np.ma.masked_array(m[..., ii].T, m[..., ii].T == 0))
+
+        time_marker.set_data([model.lc.time[model.mask][::model.skip_n_points][ii],
+                              model.lc.time[model.mask][::model.skip_n_points][ii]],
+                             [0, 1])
+
+        return [im]
+
+    fig.tight_layout()
+    anim = animation.FuncAnimation(
+        fig,
+        animate_func,
+        frames=m.shape[2],
+        interval=1000 / fps,  # in ms
+    )
+
+    anim.save(path, fps=fps, extra_args=['-vcodec', 'libx264'])
+    print('done')
+
+    return m

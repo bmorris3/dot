@@ -54,6 +54,7 @@ class Model(object):
         self.verbose = verbose
         self.scale_error = scale_error
         self.mask = (self.lc.time > min_time) & (self.lc.time < max_time)
+        self.contrast = contrast
         self._initialize_model(rotation_period, n_spots,
                                latitude_cutoff=latitude_cutoff,
                                scale_error=scale_error, verbose=verbose,
@@ -85,7 +86,7 @@ class Model(object):
 
     def _initialize_model(self, rotation_period, n_spots, latitude_cutoff=10,
                           scale_error=5, verbose=False, partition_lon=True,
-                          fit_contrast=False, contrast=0.7):
+                          contrast=0.7):
         """
         Construct a PyMC3 model instance for use with samplers.
 
@@ -97,7 +98,7 @@ class Model(object):
         scale_error : float
         verbose : bool
         partition_lon : bool
-        fit_contrast : bool
+        contrast : float or None
         """
         with DisableLogger(verbose):
             with pm.Model(name=f'{n_spots}') as model:
@@ -234,4 +235,6 @@ class Model(object):
                 trace = pm.sample(draws,
                                   start=trace_smc.point(-1), cores=cores,
                                   target_accept=target_accept, **kwargs)
-        return trace
+                summary = pm.summary(trace)
+
+        return trace, summary
