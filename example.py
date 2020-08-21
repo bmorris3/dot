@@ -25,15 +25,6 @@ limit_duration = 2  # days
 if __name__ == '__main__':
     # If there isn't already a results directory, create one:
     if not os.path.exists(results_dir):
-        # Get the light curve from lightkurve
-        # print(f'Load the light curve for {target} from lightkurve...')
-        # from lightkurve import search_lightcurvefile
-        # lc = search_lightcurvefile(
-        #     target=target,
-        #     mission=mission,
-        #     sector=sector
-        # ).download_all().PDCSAP_FLUX.stitch()
-
         # Fetch example light curve from the package:
         lc = ab_dor_example_lc()
 

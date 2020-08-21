@@ -2,9 +2,15 @@ import os
 import pickle
 import numpy as np
 import pandas as pd
-from lightkurve import LightCurve
+from lightkurve import LightCurve, search_lightcurvefile
+import h5py
 
-__all__ = ['save_results', 'load_results', 'ab_dor_example_lc']
+
+__all__ = ['save_results', 'load_results', 'ab_dor_example_lc',
+           'load_light_curve']
+
+hdf5_archive_disk = '/110k_pdcsap/'
+hdf5_index_path = '110k_rotation_mcquillan_pdcsap_smooth_index_0724.csv'
 
 
 def save_results(name, model, trace, summary):
@@ -79,3 +85,68 @@ def ab_dor_example_lc(path=None):
         path = os.path.join(os.path.dirname(__file__), 'data',
                             'abdor_lc_example.npy')
     return LightCurve(*np.load(path))
+
+
+def load_light_curve(kic):
+    """
+    Load a light curve from its KIC number.
+
+    Parameters
+    ----------
+    kic : int
+        Kepler Input Catalog number
+
+    Returns
+    -------
+    lc : `~lightkurve.LightCurve`
+        PDCSAP light curve object
+    """
+    on_gcp = os.path.exists(os.path.join(hdf5_archive_disk,
+                                         hdf5_index_path))
+    # If on Google Cloud
+    if on_gcp:
+        try:
+            # Try to load from HDF5
+            return load_from_hdf5(kic)
+        except ValueError:
+            pass
+    # If not on Google Cloud or the loader fails, use lightkurve
+    return download_from_lightkurve(kic)
+
+
+def load_from_hdf5(kic, data_path=None, index_file=None):
+    """
+    Load a light curve from the HDF5 archive on Google Cloud Platform.
+    """
+    if data_path is None:
+        data_path = hdf5_archive_disk
+    if index_file is None:
+        index_file = hdf5_index_path
+    index_path = os.path.join(data_path, index_file)
+    stars_index = pd.read_csv(index_path)
+    star_path_list = stars_index.loc[stars_index["KIC"] == kic]["filepath"].values
+    if len(star_path_list) == 0:
+        raise ValueError(f'Target KIC {kic} not in database.')
+    star_path = star_path_list[0]
+
+    with h5py.File(os.path.join(data_path, star_path), "r") as f:
+        time = np.array(f[str(kic)].get("PDC_SAP_time"))
+        flux = np.array(f[str(kic)].get("PDC_SAP_flux"))
+        flux_err = np.array(f[str(kic)].get("PDC_SAP_flux_err"))
+
+    pdcsap = LightCurve(
+        time=time, flux=flux, flux_err=flux_err, targetid=kic
+    )
+
+    return pdcsap
+
+
+def download_from_lightkurve(kic):
+    """
+    Download a light curve from lightkurve
+    """
+    lc = search_lightcurvefile(
+        target=f"KIC {kic}",
+        mission='Kepler'
+    ).download_all().PDCSAP_FLUX.stitch()
+    return lc
