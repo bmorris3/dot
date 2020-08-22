@@ -1,6 +1,5 @@
-name: dot
+name: dotenv
 channels:
   - anaconda
 dependencies:
-  - libpython
   - theano
