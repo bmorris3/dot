@@ -74,7 +74,7 @@ class Model(object):
         self.contrast = contrast
         self._initialize_model(rotation_period, n_spots,
                                latitude_cutoff=latitude_cutoff,
-                               scale_error=scale_error, verbose=verbose,
+                               scale_error=scale_error,
                                contrast=contrast)
 
     def gp_normalize(self, log_sigma=1, log_rho=8, plot=False):
@@ -102,7 +102,7 @@ class Model(object):
         self.lc.flux /= gp_trend
 
     def _initialize_model(self, rotation_period, n_spots, latitude_cutoff=10,
-                          scale_error=5, verbose=False, partition_lon=True,
+                          scale_error=5, partition_lon=True,
                           contrast=0.7):
         """
         Construct a PyMC3 model instance for use with samplers.
@@ -117,89 +117,77 @@ class Model(object):
             Don't place spots above/below this number of degrees from the pole
         scale_error : float
             Scale up the errorbars by a factor of `scale_error`
-        verbose : bool
-            Allow PyMC3 dialogs to print to stdout
         partition_lon : bool
             Enforce strict partitions on star in longitude for sampling
         contrast : float or None
             Starspot contrast
         """
-        with DisableLogger(verbose):
-            with pm.Model(name=f'{n_spots}') as model:
-                f0 = pm.Normal("f0", sigma=0.1)
-                spot_model = 1 + f0
-                eq_period = pm.TruncatedNormal("P_eq",
-                                               lower=0.4 * rotation_period,
-                                               upper=1.5 * rotation_period,
-                                               mu=rotation_period,
-                                               sigma=0.2 * rotation_period)
-                shear = pm.HalfNormal("shear",
-                                      sigma=0.2)
-                comp_inclination = pm.Uniform("comp_inc",
-                                         lower=np.radians(0),
-                                         upper=np.radians(90))
+        with pm.Model(name=f'{n_spots}') as model:
+            f0 = pm.Normal("f0", sigma=0.1)
+            eq_period = pm.TruncatedNormal("P_eq",
+                                           lower=0.4 * rotation_period,
+                                           upper=1.5 * rotation_period,
+                                           mu=rotation_period,
+                                           sigma=0.2 * rotation_period)
+            shear = pm.HalfNormal("shear",
+                                  sigma=0.2)
+            comp_inclination = pm.Uniform("comp_inc",
+                                          lower=np.radians(0),
+                                          upper=np.radians(90))
+
+            if partition_lon:
                 lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
+                lower = lon_lims[:-1]
+                upper = lon_lims[1:]
+            else:
+                lower = 0
+                upper = 2 * np.pi
 
-                for spot_ind in range(n_spots):
-                    if partition_lon:
-                        lon_lower = lon_lims[spot_ind]
-                        lon_upper = lon_lims[spot_ind + 1]
-                        mu = 0.5 * (lon_lims[spot_ind] +
-                                    lon_lims[spot_ind + 1])
-                        sigma = 0.5 * (lon_lims[spot_ind + 1] -
-                                       lon_lims[spot_ind])
+            lon = pm.Uniform("lon",
+                             lower=lower,
+                             upper=upper,
+                             shape=(1, n_spots))
+            lat = pm.TruncatedNormal("lat",
+                                     lower=np.radians(latitude_cutoff),
+                                     upper=np.radians(180 - latitude_cutoff),
+                                     mu=np.pi / 2,
+                                     sigma=np.pi / 2,
+                                     shape=(1, n_spots))
+            rspot = pm.HalfNormal("R_spot",
+                                  sigma=0.1,
+                                  shape=(1, n_spots))
 
-                        lon = pm.TruncatedNormal(f"lon_{spot_ind}",
-                                                 lower=lon_lower,
-                                                 upper=lon_upper,
-                                                 mu=mu,
-                                                 sigma=sigma)
-                    else:
-                        lon = pm.Uniform(f"lon_{spot_ind}",
-                                         lower=0,
-                                         upper=2*np.pi,
-                                         mu=mu,
-                                         sigma=sigma)
-                    lat = pm.TruncatedNormal(f"lat_{spot_ind}",
-                                             lower=np.radians(latitude_cutoff),
-                                             upper=np.radians(
-                                                 180 - latitude_cutoff),
-                                             mu=np.pi / 2,
-                                             sigma=np.pi / 2)
-                    rspot = pm.HalfNormal(f"R_spot_{spot_ind}",
-                                          sigma=0.1)
+            spot_period = eq_period / (1 - shear * pm.math.sin(lat - np.pi / 2) ** 2)
+            phi = 2 * np.pi / spot_period * (self.lc.time[self.mask][::self.skip_n_points][:, None] -
+                                             self.lc.time.mean()) - lon
 
-                    spot_period = eq_period / (
-                                1 - shear * pm.math.sin(lat - np.pi / 2) ** 2)
-                    phi = 2 * np.pi / spot_period * (self.lc.time[self.mask][::self.skip_n_points] -
-                                                     self.lc.time.mean()) - lon
+            spot_position_x = (pm.math.cos(phi - np.pi / 2) *
+                               pm.math.sin(comp_inclination) *
+                               pm.math.sin(lat) +
+                               pm.math.cos(comp_inclination) *
+                               pm.math.cos(lat))
+            spot_position_y = -(pm.math.sin(phi - np.pi/2) *
+                                pm.math.sin(lat))
+            spot_position_z = (pm.math.cos(lat) *
+                               pm.math.sin(comp_inclination) -
+                               pm.math.sin(phi) *
+                               pm.math.cos(comp_inclination) *
+                               pm.math.sin(lat))
+            rsq = spot_position_x ** 2 + spot_position_y ** 2
+            if contrast is None:
+                contrast = pm.TruncatedNormal('contrast',
+                                              lower=0.01,
+                                              upper=0.99,
+                                              mu=0.5,
+                                              sigma=0.5)
+            spot_model = 1 + f0 - pm.math.sum(rspot ** 2 * (1 - contrast) *
+                                              pm.math.where(spot_position_z > 0,
+                                                            pm.math.sqrt(1 - rsq),
+                                                            0), axis=1)
 
-                    spot_position_x = (pm.math.cos(phi - np.pi / 2) *
-                                       pm.math.sin(comp_inclination) *
-                                       pm.math.sin(lat) +
-                                       pm.math.cos(comp_inclination) *
-                                       pm.math.cos(lat))
-                    spot_position_y = -(pm.math.sin(phi - np.pi/2) *
-                                        pm.math.sin(lat))
-                    spot_position_z = (pm.math.cos(lat) *
-                                       pm.math.sin(comp_inclination) -
-                                       pm.math.sin(phi) *
-                                       pm.math.cos(comp_inclination) *
-                                       pm.math.sin(lat))
-                    rsq = spot_position_x ** 2 + spot_position_y ** 2
-                    if contrast is None:
-                        contrast = pm.TruncatedNormal(f'contrast_{spot_ind}',
-                                                      lower=0.01,
-                                                      upper=0.99,
-                                                      mu=contrast,
-                                                      sigma=0.5)
-                    spot_model -= rspot ** 2 * (1 - contrast) * pm.math.where(
-                        spot_position_z > 0, pm.math.sqrt(1 - rsq), 0)
-
-                pm.Normal("obs", mu=spot_model,
-                          sigma=scale_error *
-                                self.lc.flux_err[self.mask][::self.skip_n_points],
-                          observed=self.lc.flux[self.mask][::self.skip_n_points])
+            pm.Normal("obs", mu=spot_model,
+                      sigma=scale_error * self.lc.flux_err[self.mask][::self.skip_n_points],
+                      observed=self.lc.flux[self.mask][::self.skip_n_points])
 
         self.pymc_model = model
         return self.pymc_model

@@ -105,7 +105,7 @@ release = package.__version__
 # Static files to copy after template files
 html_static_path = ['_static']
 html_style = 'dot.css'
-
+# Logo created with vectr.com: https://vectr.com/bmmorris/a1PT00ATbi
 
 html_theme_options = {
     'logotext1': 'dot',  # white,  semi-bold
