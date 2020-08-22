@@ -48,13 +48,13 @@ class Model(object):
             Allow PyMC3 dialogs to print to stdout
         partition_lon : bool
             Enforce strict partitions on star in longitude for sampling
-        skip_n_points : int
+        skip_n_points : int (optional)
             Skip every n points for faster runs
-        min_time : float
+        min_time : float or None (optional)
             Minimum time to consider in the model
-        max_time : float
+        max_time : float or None (optional)
             Maximum time to consider in the model
-        contrast : float or None
+        contrast : float or None (optional)
             Starspot contrast
         """
         self.lc = light_curve
@@ -64,6 +64,12 @@ class Model(object):
         self.n_spots = n_spots
         self.verbose = verbose
         self.scale_error = scale_error
+
+        if min_time is None:
+            min_time = self.lc.time.min() - 1
+        if max_time is None:
+            max_time = self.lc.time.max() + 1
+
         self.mask = (self.lc.time > min_time) & (self.lc.time < max_time)
         self.contrast = contrast
         self._initialize_model(rotation_period, n_spots,

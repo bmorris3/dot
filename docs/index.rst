@@ -7,3 +7,4 @@ This is the documentation for dot.
   :maxdepth: 2
 
   dot/index.rst
+  dot/gettingstarted.rst
