@@ -5,9 +5,9 @@ Getting Started
 .. note::
 
     If you plan to copy and paste the code in this tutorial into a notebook,
-    no modifications are needed to run your code. However, if you run it in
-    from a Python script (.py file), you need to add the following line of code:
-    ``if __name__ == "__main__":`` at the top of the code or else you'll hit a
+    no modifications are needed to run the examples. However, if you run it in
+    from a Python script (.py file), you need to add the following line
+    ``if __name__ == "__main__":`` to the top of the code or else you'll hit a
     `RuntimeError`.
 
 Load a light curve

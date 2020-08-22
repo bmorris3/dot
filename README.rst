@@ -1,3 +1,7 @@
+.. image:: https://vectr.com/bmmorris/a1PT00ATbi.png?width=300&height=300&select=a1PT00ATbipage0
+    :align: right
+    :width: 300
+
 dot
 ---
 
@@ -12,8 +16,11 @@ dot
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
 
-Starspot rotational modulation forward model.
-
+Dot is a forward model for starspot rotational modulation in Python.
+It is similar to `fleck <http://fleck.readthedocs.io>`_
+(`Morris 2020 <https://joss.theoj.org/papers/10.21105/joss.02103>`_),
+but written for sampling with `PyMC3 <https://docs.pymc.io>`_. The source code
+is `available on GitHub <https://github.com/bmorris3/dot>`_.
 
 License
 -------
@@ -30,3 +37,14 @@ Contributing
 
 We love contributions! dot is open source,
 built on open source, and we'd love to have you hang out in our community.
+
+
+Acknowledgements
+----------------
+
+This project is built from lessons learned during the
+`Frontier Development Lab <https://frontierdevelopmentlab.org>`_
+2020 Heliophysics/Starspots challenge, which was a collaboration between:
+Tansu Daylan, Lisseth Gavilan, Daniel Giles, J. Emmanuel Johnson,
+Anna Jungbluth, Brett Morris, Andrés Muñoz-Jaramillo, Stela Ishitani Silva &
+Sairam Sundaresan.

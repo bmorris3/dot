@@ -1,0 +1,11 @@
+@import url("bootstrap-astropy.css");
+
+div.topbar a.brand {
+  background: transparent url("dot.png") no-repeat 8px 3px;
+  background-image: url("dot.svg"), none;
+  background-size: 32px 32px;
+}
+
+#logotext1 {
+  color: #e8f2fc;
+}
