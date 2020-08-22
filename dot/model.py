@@ -31,11 +31,11 @@ class Model(object):
                  skip_n_points=1, latitude_cutoff=10, scale_error=5,
                  verbose=False, min_time=None, max_time=None, contrast=0.7):
         """
-        Construct a new instance of `Model`.
+        Construct a new instance of `~dot.Model`.
 
         Parameters
         ----------
-        light_curve : `~lightkurve.LightCurve`
+        light_curve : `~lightkurve.lightcurve.LightCurve`
         rotation_period : float
             Stellar rotation period
         n_spots : int
@@ -120,7 +120,7 @@ class Model(object):
         """
         with DisableLogger(verbose):
             with pm.Model(name=f'{n_spots}') as model:
-                f0 = pm.HalfNormal("f0", sigma=1)
+                f0 = pm.Normal("f0", sigma=0.1)
                 spot_model = 1 + f0
                 eq_period = pm.TruncatedNormal("P_eq",
                                                lower=0.4 * rotation_period,
@@ -238,7 +238,7 @@ class Model(object):
 
         Returns
         -------
-        trace : `~pymc.MultiTrace`
+        trace : `~pymc3.backends.base.MultiTrace`
         """
         self._check_model()
         with DisableLogger(self.verbose):
@@ -255,7 +255,7 @@ class Model(object):
 
         Parameters
         ----------
-        trace_smc : `~pymc.MultiTrace`
+        trace_smc : `~pymc3.backends.base.MultiTrace`
             Results from the SMC sampler
         draws : int
             Draws for the SMC sampler
@@ -266,7 +266,7 @@ class Model(object):
 
         Returns
         -------
-        trace : `~pymc.MultiTrace`
+        trace : `~pymc3.backends.base.MultiTrace`
             Results of the NUTS sampler
         """
         self._check_model()

@@ -23,9 +23,9 @@ def save_results(name, model, trace, summary):
         Path to the directory where results will be saved
     model : `~dot.Model`
         Model object
-    trace : `~pymc3.MultiTrace`
+    trace : `~pymc3.backends.base.MultiTrace`
         Trace from SMC/NUTS
-    summary : `pandas.DataFrame`
+    summary : `~pandas.DataFrame`
         Dataframe containing summary statistics
     """
     with open(os.path.join(name, 'model.pkl'), 'wb') as buff:
@@ -50,9 +50,9 @@ def load_results(name):
     -------
     model : `~dot.Model`
         Model object
-    trace : `~pymc3.MultiTrace`
+    trace : `~pymc3.backends.base.MultiTrace`
         Trace from SMC/NUTS
-    summary : `pandas.DataFrame`
+    summary : `~pandas.DataFrame`
         Dataframe containing summary statistics
     """
     with open(os.path.join(name, 'model.pkl'), 'rb') as buff:
@@ -68,7 +68,7 @@ def load_results(name):
 
 def ab_dor_example_lc(path=None):
     """
-    Return a `~lightkurve.LightCurve` object with the first few TESS
+    Return a `~lightkurve.lightcurve.LightCurve` object with the first few TESS
     observations of the rapidly-rotating, spotted star AB Doradus.
 
     Parameters
@@ -78,7 +78,7 @@ def ab_dor_example_lc(path=None):
 
     Returns
     -------
-    lc : `~lightkurve.LightCurve`
+    lc : `~lightkurve.lightcurve.LightCurve`
         Light curve of AB Doradus
     """
     if path is None:
@@ -98,7 +98,7 @@ def load_light_curve(kic):
 
     Returns
     -------
-    lc : `~lightkurve.LightCurve`
+    lc : `~lightkurve.lightcurve.LightCurve`
         PDCSAP light curve object
     """
     on_gcp = os.path.exists(os.path.join(hdf5_archive_disk,

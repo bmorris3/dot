@@ -15,7 +15,7 @@ def corner(trace, **kwargs):
 
     Parameters
     ----------
-    trace : `~pymc3.MultiTrace`
+    trace : `~pymc3.backends.base.MultiTrace`
         Trace from SMC/NUTS
     """
     return dfm_corner(pm.trace_to_dataframe(trace), **kwargs)
@@ -29,7 +29,7 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
     ----------
     model : `~dot.Model`
         Model object
-    trace : `~pymc3.MultiTrace`
+    trace : `~pymc3.backends.base.MultiTrace`
         Trace from SMC/NUTS
     samples : int
         Number of posterior predictive samples to draw
@@ -71,7 +71,7 @@ def posterior_shear(model, trace, path=None):
     ----------
     model : `~dot.Model`
         Model object
-    trace : `~pymc3.MultiTrace`
+    trace : `~pymc3.backends.base.MultiTrace`
         Trace from SMC/NUTS
 
     Returns
@@ -104,7 +104,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
         Save movie to this directory
     model : `~dot.Model`
         Model object
-    trace : `~pymc3.MultiTrace`
+    trace : `~pymc3.backends.base.MultiTrace`
         Trace from SMC/NUTS
     xsize : int
         Number of pixels on a side in the pixelated stellar image
@@ -136,7 +136,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     eq_period = np.median(trace[f'{n_spots}_P_eq'])
 
     samples = pm.trace_to_dataframe(trace).values
-    if isinstance(model.contrast, float):
+    if isinstance(model.contrast, (float, int)):
         parameters_per_spot = 3
         contrast = model.contrast
     else:
@@ -204,7 +204,10 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
                    ((xx[:, :, None] - spot_position_x[None, None, :]) * np.sin(A) -
                     (yy[:, :, None] - spot_position_y[None, None, :]) * np.cos(A)) ** 2 / b ** 2 <= 1)
         on_spot *= spot_position_z[None, None, :] > 0
-        m[on_spot] *= 1 - contrast
+        if contrast < 1:
+            m[on_spot] *= 1 - contrast
+        else:
+            m[on_spot] *= contrast
 
     # Draw samples from the posterior in the light curve domain
     with model:
@@ -227,7 +230,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
              cmap=plt.cm.copper,
              extent=[-1, 1, -1, 1],
              vmin=0,
-             vmax=1,
+             vmax=ld.max(),
              origin='lower'
          )
     ax_image.axis('off')
