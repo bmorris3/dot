@@ -12,4 +12,7 @@ python:
         - docs
         - all
 
+conda:
+  environment: environment.yml
+
 formats: []

@@ -1,0 +1,6 @@
+name: dot
+channels:
+  - anaconda
+dependencies:
+  - libpython
+  - theano
