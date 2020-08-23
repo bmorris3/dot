@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from celerite import GP
-from celerite.terms import Matern32Term
+from exoplanet.gp import terms, GP
 import pymc3 as pm
 from pymc3.smc import sample_smc
 import logging
@@ -28,7 +27,7 @@ class DisableLogger():
 
 class Model(object):
     def __init__(self, light_curve, rotation_period, n_spots,
-                 skip_n_points=1, latitude_cutoff=10, scale_error=5,
+                 skip_n_points=1, latitude_cutoff=10, rho_factor=250,
                  verbose=False, min_time=None, max_time=None, contrast=0.7):
         """
         Construct a new instance of `~dot.Model`.
@@ -42,8 +41,6 @@ class Model(object):
             Number of spots
         latitude_cutoff : float
             Don't place spots above/below this number of degrees from the pole
-        scale_error : float
-            Scale up the errorbars by a factor of `scale_error`
         verbose : bool
             Allow PyMC3 dialogs to print to stdout
         partition_lon : bool
@@ -56,6 +53,9 @@ class Model(object):
             Maximum time to consider in the model
         contrast : float or None (optional)
             Starspot contrast
+        rho_factor : float (optional)
+            Scale up the GP length scale by a factor `rho_factor`
+            larger than the estimated `rotation_period`
         """
         self.lc = light_curve
         self.pymc_model = None
@@ -63,7 +63,6 @@ class Model(object):
         self.rotation_period = rotation_period
         self.n_spots = n_spots
         self.verbose = verbose
-        self.scale_error = scale_error
 
         if min_time is None:
             min_time = self.lc.time.min() - 1
@@ -72,38 +71,14 @@ class Model(object):
 
         self.mask = (self.lc.time > min_time) & (self.lc.time < max_time)
         self.contrast = contrast
-        self._initialize_model(rotation_period, n_spots,
+        self._initialize_model(rotation_period=rotation_period,
+                               n_spots=n_spots,
                                latitude_cutoff=latitude_cutoff,
-                               scale_error=scale_error,
-                               contrast=contrast)
-
-    def gp_normalize(self, log_sigma=1, log_rho=8, plot=False):
-        """
-        Use a Matern 3/2 kernel to normalize the data by a smooth Gaussian
-        process.
-
-        Parameters
-        ----------
-
-        Returns
-        -------
-
-        """
-        gp = GP(Matern32Term(log_sigma=log_sigma, log_rho=log_rho))
-        gp.compute(self.lc.time[self.mask] / 100, self.lc.flux_err[self.mask])
-        gp_trend = gp.predict(self.lc.flux[self.mask],
-                              self.lc.time[self.mask] / 100,
-                              return_cov=False)
-        if plot:
-            plt.plot(self.lc.time[self.mask], self.lc.flux[self.mask])
-            plt.plot(self.lc.time[self.mask], gp_trend)
-            plt.show()
-
-        self.lc.flux /= gp_trend
+                               contrast=contrast,
+                               rho_factor=rho_factor)
 
     def _initialize_model(self, rotation_period, n_spots, latitude_cutoff=10,
-                          scale_error=5, partition_lon=True,
-                          contrast=0.7):
+                          partition_lon=True, contrast=0.7, rho_factor=250):
         """
         Construct a PyMC3 model instance for use with samplers.
 
@@ -121,9 +96,11 @@ class Model(object):
             Enforce strict partitions on star in longitude for sampling
         contrast : float or None
             Starspot contrast
+        rho_factor : float (default: 250)
+            Scale up the GP length scale by a factor `rho_factor`
+            larger than the estimated `rotation_period`
         """
         with pm.Model(name=f'{n_spots}') as model:
-            f0 = pm.Normal("f0", sigma=0.1)
             eq_period = pm.TruncatedNormal("P_eq",
                                            lower=0.4 * rotation_period,
                                            upper=1.5 * rotation_period,
@@ -180,16 +157,28 @@ class Model(object):
                                               upper=0.99,
                                               mu=0.5,
                                               sigma=0.5)
-            spot_model = 1 + f0 - pm.math.sum(rspot ** 2 * (1 - contrast) *
-                                              pm.math.where(spot_position_z > 0,
-                                                            pm.math.sqrt(1 - rsq),
-                                                            0), axis=1)
 
-            pm.Normal("obs", mu=spot_model,
-                      sigma=scale_error * self.lc.flux_err[self.mask][::self.skip_n_points],
-                      observed=self.lc.flux[self.mask][::self.skip_n_points])
+            spot_model = 1 - pm.math.sum(rspot ** 2 * (1 - contrast) *
+                                         pm.math.where(spot_position_z > 0,
+                                                       pm.math.sqrt(1 - rsq),
+                                                       0),
+                                         axis=1)
+
+            gp = GP(
+                terms.Matern32Term(sigma=1, rho=rho_factor * rotation_period),
+                self.lc.time[self.mask][::self.skip_n_points],
+                self.lc.flux_err[self.mask][::self.skip_n_points] ** 2,
+                mean=spot_model
+            )
+
+            # Condition the GP on the observations and add the marginal likelihood
+            # to the model
+            gp.marginal("gp",
+                observed=self.lc.flux[self.mask][::self.skip_n_points]
+            )
 
         self.pymc_model = model
+        self.pymc_gp = gp
         return self.pymc_model
 
     def __enter__(self):

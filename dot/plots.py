@@ -5,6 +5,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib import animation
 from corner import corner as dfm_corner
 import pymc3 as pm
+import exoplanet as xo
 
 __all__ = ['corner', 'posterior_predictive', 'movie']
 
@@ -147,7 +148,6 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     #                                                         parameters_per_spot))
 
     # Define the spot properties
-    print(trace[f'{n_spots}_lon'].shape)
     spot_lons = np.median(trace[f'{n_spots}_lon'], axis=0).ravel()
     spot_lats = np.median(trace[f'{n_spots}_lat'], axis=0).ravel()
     spot_rads = np.median(trace[f'{n_spots}_R_spot'], axis=0).ravel()
@@ -282,3 +282,29 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     print('done')
 
     return fig, m
+
+
+def last_step(model, trace):
+    """
+    Plot the last step in the trace, including the GP prediction.
+
+    Parameters
+    ----------
+    model : `~dot.Model`
+        Model object
+    trace : `~pymc3.backends.base.MultiTrace`
+        Trace from SMC/NUTS
+    """
+    with model:
+        mu, var = xo.eval_in_model(
+            model.pymc_gp.predict(model.lc.time[model.mask][::model.skip_n_points],
+                                  return_var=True, predict_mean=True),
+            trace.point(-1)
+        )
+    sd = np.sqrt(var)
+    plt.plot(model.lc.time[model.mask][::model.skip_n_points],
+             model.lc.flux[model.mask][::model.skip_n_points])
+    plt.plot(model.lc.time[model.mask][::model.skip_n_points], mu, color='r')
+    plt.fill_between(model.lc.time[model.mask][::model.skip_n_points],
+                     mu - sd, mu + sd, alpha=0.2, color='r')
+    return plt.gca()
