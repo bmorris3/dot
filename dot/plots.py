@@ -135,7 +135,6 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     complement_to_inclination = np.median(trace[f'{n_spots}_comp_inc'])
     eq_period = np.median(trace[f'{n_spots}_P_eq'])
 
-    samples = pm.trace_to_dataframe(trace).values
     if isinstance(model.contrast, (float, int)):
         parameters_per_spot = 3
         contrast = model.contrast
@@ -144,13 +143,14 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
         raise NotImplementedError('TODO: Need to implement floating contrast '
                                   'model')
 
-    spot_props = np.median(samples[:, 4:], axis=0).reshape((n_spots,
-                                                            parameters_per_spot))
+    # spot_props = np.median(samples[:, 4:], axis=0).reshape((n_spots,
+    #                                                         parameters_per_spot))
 
     # Define the spot properties
-    spot_lons = spot_props[:, 0]
-    spot_lats = spot_props[:, 1]
-    spot_rads = spot_props[:, 2]
+    print(trace[f'{n_spots}_lon'].shape)
+    spot_lons = np.median(trace[f'{n_spots}_lon'], axis=0).ravel()
+    spot_lats = np.median(trace[f'{n_spots}_lat'], axis=0).ravel()
+    spot_rads = np.median(trace[f'{n_spots}_R_spot'], axis=0).ravel()
 
     # Create grid of pixels on which we will pixelate the spotted star:
     xgrid = np.linspace(-1, 1, xsize)
