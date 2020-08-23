@@ -1,3 +1,5 @@
+.. _getting-started:
+
 ***************
 Getting Started
 ***************
@@ -88,7 +90,6 @@ Finally, let's plot our results:
     posterior_predictive(m, trace_nuts, samples=100)
     plt.xlim([min_time, max_time])
 
-
 .. plot::
 
     from dot import ab_dor_example_lc, Model
@@ -114,3 +115,14 @@ Finally, let's plot our results:
                                         cores=2, tune=100)
     posterior_predictive(m, trace_nuts, samples=10)
     plt.xlim([min_time, max_time])
+
+Let's save our model, trace, and summary:
+
+.. code-block:: python
+
+    from dot import save_results
+
+    results_dir = 'example'  # this directory will be created
+
+    save_results(results_dir, m, trace_nuts, summary)
+
