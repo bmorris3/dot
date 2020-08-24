@@ -1,11 +1,77 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from exoplanet.gp import terms, GP
 import pymc3 as pm
 from pymc3.smc import sample_smc
 import logging
 
 __all__ = ['Model']
+
+
+class SpotModel(pm.gp.mean.Mean):
+    def __init__(self, rotation_period, n_spots, contrast=0.4,
+                 latitude_cutoff=10, partition_lon=True):
+        pm.gp.mean.Mean.__init__(self)
+        self.f0 = pm.HalfNormal("f0", sigma=1)
+        self.eq_period = pm.TruncatedNormal("P_eq",
+                                           lower=0.8 * rotation_period,
+                                           upper=1.2 * rotation_period,
+                                           mu=rotation_period,
+                                           sigma=0.2 * rotation_period)
+        self.shear = pm.HalfNormal("shear",
+                                   sigma=0.2)
+        self.comp_inclination = pm.Uniform("comp_inc",
+                                           lower=np.radians(0),
+                                           upper=np.radians(90))
+
+        if partition_lon:
+            lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
+            lower = lon_lims[:-1]
+            upper = lon_lims[1:]
+        else:
+            lower = 0
+            upper = 2 * np.pi
+
+        self.lon = pm.Uniform("lon",
+                             lower=lower,
+                             upper=upper,
+                             shape=(1, n_spots))
+        self.lat = pm.TruncatedNormal("lat",
+                                     lower=np.radians(latitude_cutoff),
+                                     upper=np.radians(180 - latitude_cutoff),
+                                     mu=np.pi / 2,
+                                     sigma=np.pi / 2,
+                                     shape=(1, n_spots))
+        self.rspot = pm.HalfNormal("R_spot",
+                                  sigma=0.1,
+                                  shape=(1, n_spots))
+        self.contrast = contrast
+        self.spot_period = self.eq_period / (1 - self.shear * pm.math.sin(self.lat - np.pi / 2) ** 2)
+        self.sin_lat = pm.math.sin(self.lat)
+        self.cos_lat = pm.math.cos(self.lat)
+        self.sin_c_inc = pm.math.sin(self.comp_inclination)
+        self.cos_c_inc = pm.math.cos(self.comp_inclination)
+
+    def __call__(self, X):
+        phi = 2 * np.pi / self.spot_period * X - self.lon
+        spot_position_x = (pm.math.cos(phi - np.pi / 2) *
+                           self.sin_c_inc *
+                           self.sin_lat +
+                           self.cos_c_inc *
+                           self.cos_lat)
+        spot_position_y = -(pm.math.sin(phi - np.pi/2) *
+                            self.sin_lat)
+        spot_position_z = (self.cos_lat *
+                           self.sin_c_inc -
+                           pm.math.sin(phi) *
+                           self.cos_c_inc *
+                           self.sin_lat)
+        rsq = spot_position_x ** 2 + spot_position_y ** 2
+        spot_model = 1 - pm.math.sum(self.rspot ** 2 * (1 - self.contrast) *
+                                     pm.math.where(spot_position_z > 0,
+                                                   pm.math.sqrt(1 - rsq),
+                                                   0),
+                                     axis=1) + self.f0
+
+        return spot_model
 
 
 class DisableLogger():
@@ -101,81 +167,24 @@ class Model(object):
             larger than the estimated `rotation_period`
         """
         with pm.Model(name=f'{n_spots}') as model:
-            eq_period = pm.TruncatedNormal("P_eq",
-                                           lower=0.4 * rotation_period,
-                                           upper=1.5 * rotation_period,
-                                           mu=rotation_period,
-                                           sigma=0.2 * rotation_period)
-            shear = pm.HalfNormal("shear",
-                                  sigma=0.2)
-            comp_inclination = pm.Uniform("comp_inc",
-                                          lower=np.radians(0),
-                                          upper=np.radians(90))
+            cov_func = pm.gp.cov.Matern32(1, ls=rho_factor * rotation_period)
 
-            if partition_lon:
-                lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
-                lower = lon_lims[:-1]
-                upper = lon_lims[1:]
-            else:
-                lower = 0
-                upper = 2 * np.pi
-
-            lon = pm.Uniform("lon",
-                             lower=lower,
-                             upper=upper,
-                             shape=(1, n_spots))
-            lat = pm.TruncatedNormal("lat",
-                                     lower=np.radians(latitude_cutoff),
-                                     upper=np.radians(180 - latitude_cutoff),
-                                     mu=np.pi / 2,
-                                     sigma=np.pi / 2,
-                                     shape=(1, n_spots))
-            rspot = pm.HalfNormal("R_spot",
-                                  sigma=0.1,
-                                  shape=(1, n_spots))
-
-            spot_period = eq_period / (1 - shear * pm.math.sin(lat - np.pi / 2) ** 2)
-            phi = 2 * np.pi / spot_period * (self.lc.time[self.mask][::self.skip_n_points][:, None] -
-                                             self.lc.time.mean()) - lon
-
-            spot_position_x = (pm.math.cos(phi - np.pi / 2) *
-                               pm.math.sin(comp_inclination) *
-                               pm.math.sin(lat) +
-                               pm.math.cos(comp_inclination) *
-                               pm.math.cos(lat))
-            spot_position_y = -(pm.math.sin(phi - np.pi/2) *
-                                pm.math.sin(lat))
-            spot_position_z = (pm.math.cos(lat) *
-                               pm.math.sin(comp_inclination) -
-                               pm.math.sin(phi) *
-                               pm.math.cos(comp_inclination) *
-                               pm.math.sin(lat))
-            rsq = spot_position_x ** 2 + spot_position_y ** 2
-            if contrast is None:
-                contrast = pm.TruncatedNormal('contrast',
-                                              lower=0.01,
-                                              upper=0.99,
-                                              mu=0.5,
-                                              sigma=0.5)
-
-            spot_model = 1 - pm.math.sum(rspot ** 2 * (1 - contrast) *
-                                         pm.math.where(spot_position_z > 0,
-                                                       pm.math.sqrt(1 - rsq),
-                                                       0),
-                                         axis=1)
-
-            gp = GP(
-                terms.Matern32Term(sigma=1, rho=rho_factor * rotation_period),
-                self.lc.time[self.mask][::self.skip_n_points],
-                self.lc.flux_err[self.mask][::self.skip_n_points] ** 2,
-                mean=spot_model
+            mean_func = SpotModel(
+                  rotation_period,
+                  n_spots=n_spots,
+                  latitude_cutoff=latitude_cutoff,
+                  contrast=contrast,
+                  partition_lon=partition_lon
+            )
+            gp = pm.gp.Marginal(
+                mean_func=mean_func,
+                cov_func=cov_func
             )
 
-            # Condition the GP on the observations and add the marginal likelihood
-            # to the model
-            gp.marginal("gp",
-                observed=self.lc.flux[self.mask][::self.skip_n_points]
-            )
+            x = self.lc.time[self.mask][::self.skip_n_points][:, None]
+            y = self.lc.flux[self.mask][::self.skip_n_points]
+            yerr = self.lc.flux_err[self.mask][::self.skip_n_points]
+            y_ = gp.marginal_likelihood("y", X=x, y=y, noise=yerr)
 
         self.pymc_model = model
         self.pymc_gp = gp

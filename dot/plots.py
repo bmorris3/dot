@@ -172,8 +172,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     for spot_ind in range(n_spots):
         # Make everything spin
         period_i = eq_period / (1 - shear * np.sin(spot_lats[spot_ind] - np.pi / 2) ** 2)
-        phi = 2 * np.pi / period_i * (model.lc.time[model.mask][::model.skip_n_points] -
-                                      model.lc.time[model.mask].mean()) - spot_lons[spot_ind]
+        phi = 2 * np.pi / period_i * (model.lc.time[model.mask][::model.skip_n_points]) - spot_lons[spot_ind]
 
         # Compute the spot position as a function of time:
         spot_position_x = (np.cos(phi - np.pi / 2) * np.sin(complement_to_inclination) *
@@ -284,7 +283,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     return fig, m
 
 
-def last_step(model, trace):
+def last_step(model, trace, x=None):
     """
     Plot the last step in the trace, including the GP prediction.
 
@@ -295,16 +294,23 @@ def last_step(model, trace):
     trace : `~pymc3.backends.base.MultiTrace`
         Trace from SMC/NUTS
     """
+    if x is None:
+        x = model.lc.time[model.mask][::model.skip_n_points][:, None]
+
     with model:
-        mu, var = xo.eval_in_model(
-            model.pymc_gp.predict(model.lc.time[model.mask][::model.skip_n_points],
-                                  return_var=True, predict_mean=True),
-            trace.point(-1)
-        )
-    sd = np.sqrt(var)
-    plt.plot(model.lc.time[model.mask][::model.skip_n_points],
-             model.lc.flux[model.mask][::model.skip_n_points])
-    plt.plot(model.lc.time[model.mask][::model.skip_n_points], mu, color='r')
-    plt.fill_between(model.lc.time[model.mask][::model.skip_n_points],
-                     mu - sd, mu + sd, alpha=0.2, color='r')
+        if 'y_pred' not in [str(v) for v in model.pymc_model.vars]:
+            y_pred = model.pymc_gp.conditional("y_pred", Xnew=x[:, None])
+        gp_pred_samples = pm.sample_posterior_predictive(trace, vars=[y_pred],
+                                                         samples=10)
+
+    plt.plot(x, (gp_pred_samples[f'{model.n_spots}_y_pred']).T,
+             color='DodgerBlue', alpha=0.1)
+
+    x_data = model.lc.time[model.mask][::model.skip_n_points][:, None]
+    y_data = model.lc.flux[model.mask][::model.skip_n_points]
+    yerr_data = model.lc.flux_err[model.mask][::model.skip_n_points]
+
+    plt.errorbar(x_data, y_data, yerr_data,
+                 fmt='.', color='k', ecolor='silver', zorder=10)
+
     return plt.gca()

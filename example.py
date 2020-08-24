@@ -4,7 +4,7 @@ conda install mkl-service
 import os
 import matplotlib.pyplot as plt
 from dot import Model, save_results, load_results, ab_dor_example_lc
-from dot.plots import last_step
+from dot.plots import last_step, corner
 
 # lightkurve parameters
 target = 'AB Dor'
@@ -13,14 +13,15 @@ sector = 1
 
 # dot parameters
 rotation_period = 0.5
-n_spots = 6
+n_spots = 2
 results_dir = 'test-example'
-draws_smc = 100
+draws_smc = 1000
 draws_nuts = 100
-tune = 100
+tune = 1000
 cores = 4
 skip_n_points = 5  # skip every n photometric measurements
 limit_duration = 2  # days
+rho_factor = 250
 
 if __name__ == '__main__':
     # If there isn't already a results directory, create one:
@@ -37,10 +38,10 @@ if __name__ == '__main__':
             skip_n_points=skip_n_points,
             min_time=lc.time.min(),
             max_time=lc.time.min() + limit_duration,
-            rho_factor=250
+            rho_factor=rho_factor
         )
         print('Running SMC...')
-        trace_smc = m.sample_smc(draws=draws_smc, parallel=False)
+        trace_smc = m.sample_smc(draws=draws_smc, cores=4)
 
         print('Running NUTS...')
         trace_nuts, summary = m.sample_nuts(trace_smc, draws=draws_nuts,
@@ -53,5 +54,7 @@ if __name__ == '__main__':
     else:
         m, trace_nuts, summary = load_results(results_dir)
 
-    last_step(m, trace_nuts)
+    import numpy as np
+    xnew = np.linspace(m.lc.time.min(), m.lc.time.min() + limit_duration, 1000)
+    last_step(m, trace_nuts, x=xnew)
     plt.show()
