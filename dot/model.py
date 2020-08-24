@@ -6,21 +6,28 @@ import logging
 __all__ = ['Model']
 
 
-class SpotModel(pm.gp.mean.Mean):
-    def __init__(self, rotation_period, n_spots, contrast=0.4,
+class MeanModel(pm.gp.mean.Mean):
+    """
+    Mean model for Gaussian process regression on photometry with starspots
+    """
+    def __init__(self, light_curve, rotation_period, n_spots, contrast=0.4,
                  latitude_cutoff=10, partition_lon=True):
         pm.gp.mean.Mean.__init__(self)
-        self.f0 = pm.HalfNormal("f0", sigma=1)
+        # self.f0 = pm.HalfNormal("f0", sigma=1,
+        #                         testval=light_curve.flux.max() - 1)
         self.eq_period = pm.TruncatedNormal("P_eq",
                                            lower=0.8 * rotation_period,
                                            upper=1.2 * rotation_period,
                                            mu=rotation_period,
-                                           sigma=0.2 * rotation_period)
+                                           sigma=0.2 * rotation_period,
+                                           testval=rotation_period)
         self.shear = pm.HalfNormal("shear",
-                                   sigma=0.2)
+                                   sigma=0.2,
+                                   testval=0.01)
         self.comp_inclination = pm.Uniform("comp_inc",
                                            lower=np.radians(0),
-                                           upper=np.radians(90))
+                                           upper=np.radians(90),
+                                           testval=np.radians(1))
 
         if partition_lon:
             lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
@@ -42,7 +49,8 @@ class SpotModel(pm.gp.mean.Mean):
                                      shape=(1, n_spots))
         self.rspot = pm.HalfNormal("R_spot",
                                   sigma=0.1,
-                                  shape=(1, n_spots))
+                                  shape=(1, n_spots),
+                                  testval=0.3)
         self.contrast = contrast
         self.spot_period = self.eq_period / (1 - self.shear * pm.math.sin(self.lat - np.pi / 2) ** 2)
         self.sin_lat = pm.math.sin(self.lat)
@@ -69,7 +77,7 @@ class SpotModel(pm.gp.mean.Mean):
                                      pm.math.where(spot_position_z > 0,
                                                    pm.math.sqrt(1 - rsq),
                                                    0),
-                                     axis=1) + self.f0
+                                     axis=1)
 
         return spot_model
 
@@ -92,7 +100,7 @@ class DisableLogger():
 
 
 class Model(object):
-    def __init__(self, light_curve, rotation_period, n_spots,
+    def __init__(self, light_curve, rotation_period, n_spots, scale_errors=1,
                  skip_n_points=1, latitude_cutoff=10, rho_factor=250,
                  verbose=False, min_time=None, max_time=None, contrast=0.7):
         """
@@ -137,14 +145,13 @@ class Model(object):
 
         self.mask = (self.lc.time > min_time) & (self.lc.time < max_time)
         self.contrast = contrast
-        self._initialize_model(rotation_period=rotation_period,
-                               n_spots=n_spots,
-                               latitude_cutoff=latitude_cutoff,
-                               contrast=contrast,
-                               rho_factor=rho_factor)
+        self.scale_errors = scale_errors
+        self._initialize_model(latitude_cutoff=latitude_cutoff,
+                               rho_factor=rho_factor,
+                               partition_lon=True)
 
-    def _initialize_model(self, rotation_period, n_spots, latitude_cutoff=10,
-                          partition_lon=True, contrast=0.7, rho_factor=250):
+    def _initialize_model(self, latitude_cutoff=10,
+                          partition_lon=True, rho_factor=20):
         """
         Construct a PyMC3 model instance for use with samplers.
 
@@ -156,8 +163,6 @@ class Model(object):
             Number of spots
         latitude_cutoff : float
             Don't place spots above/below this number of degrees from the pole
-        scale_error : float
-            Scale up the errorbars by a factor of `scale_error`
         partition_lon : bool
             Enforce strict partitions on star in longitude for sampling
         contrast : float or None
@@ -166,25 +171,29 @@ class Model(object):
             Scale up the GP length scale by a factor `rho_factor`
             larger than the estimated `rotation_period`
         """
-        with pm.Model(name=f'{n_spots}') as model:
-            cov_func = pm.gp.cov.Matern32(1, ls=rho_factor * rotation_period)
-
-            mean_func = SpotModel(
-                  rotation_period,
-                  n_spots=n_spots,
+        with pm.Model(name='dot') as model:
+            mean_func = MeanModel(
+                  self.lc,
+                  self.rotation_period,
+                  n_spots=self.n_spots,
                   latitude_cutoff=latitude_cutoff,
-                  contrast=contrast,
+                  contrast=self.contrast,
                   partition_lon=partition_lon
             )
-            gp = pm.gp.Marginal(
-                mean_func=mean_func,
-                cov_func=cov_func
-            )
 
-            x = self.lc.time[self.mask][::self.skip_n_points][:, None]
+            x = self.lc.time[self.mask][::self.skip_n_points]
             y = self.lc.flux[self.mask][::self.skip_n_points]
-            yerr = self.lc.flux_err[self.mask][::self.skip_n_points]
-            y_ = gp.marginal_likelihood("y", X=x, y=y, noise=yerr)
+            yerr = self.scale_errors * self.lc.flux_err[self.mask][::self.skip_n_points]
+
+            ls = rho_factor * self.rotation_period
+            mean_err = yerr.mean()
+            eta = pm.HalfNormal('eta', sigma=1, testval=0.01)
+            cov_func = (eta ** 2 * pm.gp.cov.Matern32(1, ls=ls) +
+                        pm.gp.cov.WhiteNoise(mean_err))
+
+            gp = pm.gp.Marginal(mean_func=mean_func, cov_func=cov_func)
+
+            y_ = gp.marginal_likelihood("y", X=x[:, None], y=y, noise=yerr)
 
         self.pymc_model = model
         self.pymc_gp = gp

@@ -5,7 +5,6 @@ from matplotlib.gridspec import GridSpec
 from matplotlib import animation
 from corner import corner as dfm_corner
 import pymc3 as pm
-import exoplanet as xo
 
 __all__ = ['corner', 'posterior_predictive', 'movie']
 
@@ -132,9 +131,9 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     """
     # Get median parameter values for system setup:
     n_spots = model.n_spots
-    shear = np.median(trace[f'{n_spots}_shear'])
-    complement_to_inclination = np.median(trace[f'{n_spots}_comp_inc'])
-    eq_period = np.median(trace[f'{n_spots}_P_eq'])
+    shear = np.median(trace[f'dot_shear'])
+    complement_to_inclination = np.median(trace[f'dot_comp_inc'])
+    eq_period = np.median(trace[f'dot_P_eq'])
 
     if isinstance(model.contrast, (float, int)):
         parameters_per_spot = 3
@@ -148,9 +147,9 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     #                                                         parameters_per_spot))
 
     # Define the spot properties
-    spot_lons = np.median(trace[f'{n_spots}_lon'], axis=0).ravel()
-    spot_lats = np.median(trace[f'{n_spots}_lat'], axis=0).ravel()
-    spot_rads = np.median(trace[f'{n_spots}_R_spot'], axis=0).ravel()
+    spot_lons = np.median(trace[f'dot_lon'], axis=0).ravel()
+    spot_lats = np.median(trace[f'dot_lat'], axis=0).ravel()
+    spot_rads = np.median(trace[f'dot_R_spot'], axis=0).ravel()
 
     # Create grid of pixels on which we will pixelate the spotted star:
     xgrid = np.linspace(-1, 1, xsize)
@@ -237,7 +236,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     # Plot the light curve
     ax_lc = plt.subplot(gs[2:])
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
-               ppc[f'{n_spots}_obs'].T,
+               ppc[f'dot_obs'].T,
                color='DodgerBlue', alpha=0.05)
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
                model.lc.flux[model.mask][::model.skip_n_points],
@@ -297,18 +296,25 @@ def last_step(model, trace, x=None):
     if x is None:
         x = model.lc.time[model.mask][::model.skip_n_points][:, None]
 
-    with model:
-        if 'y_pred' not in [str(v) for v in model.pymc_model.vars]:
-            y_pred = model.pymc_gp.conditional("y_pred", Xnew=x[:, None])
-        gp_pred_samples = pm.sample_posterior_predictive(trace, vars=[y_pred],
-                                                         samples=10)
-
-    plt.plot(x, (gp_pred_samples[f'{model.n_spots}_y_pred']).T,
-             color='DodgerBlue', alpha=0.1)
-
-    x_data = model.lc.time[model.mask][::model.skip_n_points][:, None]
+    x_data = model.lc.time[model.mask][::model.skip_n_points]
     y_data = model.lc.flux[model.mask][::model.skip_n_points]
-    yerr_data = model.lc.flux_err[model.mask][::model.skip_n_points]
+    yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
+
+    given = {
+         "gp": model.pymc_gp,
+         "X": x_data[:, None],
+         "y": y_data,
+         "noise": yerr_data
+    }
+
+    mu, var = model.pymc_gp.predict(x[:, None],
+        point=trace[-1],
+        given=given,
+        diag=True,
+    )
+    sd = np.sqrt(var)
+    plt.fill_between(x, mu+sd, mu-sd, color='DodgerBlue', alpha=0.2)
+    plt.plot(x, mu, color='DodgerBlue')
 
     plt.errorbar(x_data, y_data, yerr_data,
                  fmt='.', color='k', ecolor='silver', zorder=10)
