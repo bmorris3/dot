@@ -28,9 +28,10 @@ class MeanModel(pm.gp.mean.Mean):
                                             mu=rotation_period,
                                             sigma=0.2 * rotation_period,
                                             testval=rotation_period)
-        self.shear = pm.HalfNormal("shear",
-                                   sigma=0.2,
-                                   testval=0.01)
+        
+        BoundedHalfNormal = pm.Bound(pm.HalfNormal, upper=0.99)
+        self.shear = BoundedHalfNormal("shear", sigma=0.2, testval=0.01)
+
         self.comp_inclination = pm.Uniform("comp_inc",
                                            lower=np.radians(0),
                                            upper=np.radians(90),
