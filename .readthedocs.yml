@@ -13,6 +13,6 @@ python:
         - all
 
 conda:
-  environment: environment.yml
+  environment: docs/rtd-environment.yml/environment.yml
 
 formats: []
