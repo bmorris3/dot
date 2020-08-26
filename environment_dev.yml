@@ -11,9 +11,19 @@ dependencies:
   - conda-forge::pymc3
   - conda-forge::celerite
   - matplotlib
+  - nb_conda_kernels
+  - ipython
   - pip
   - pip:
     - wandb
     - tqdm
+    - pyprojroot
+    - black
+    - pylint
+    - isort
+    - flake8
     - mypy
+    - pytest
+    - pydocstyle
+    - ipykernel
     - corner
