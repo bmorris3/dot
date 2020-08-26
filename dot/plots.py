@@ -235,7 +235,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     # Plot the light curve
     ax_lc = plt.subplot(gs[2:])
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
-               ppc['dot_obs'].T,
+               ppc['dot_y'].T,
                color='DodgerBlue', alpha=0.05)
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
                model.lc.flux[model.mask][::model.skip_n_points],
