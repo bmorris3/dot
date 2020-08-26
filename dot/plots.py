@@ -52,7 +52,7 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
                  fmt='.', color='k', ecolor='silver')
 
     plt.plot(model.lc.time[model.mask][::model.skip_n_points],
-             ppc[f'{model.n_spots}_obs'].T,
+             ppc['dot_obs'].T,
              color='DodgerBlue', lw=2, alpha=0.1)
 
     plt.gca().set(xlabel='Time [d]', ylabel='Flux',
@@ -80,7 +80,7 @@ def posterior_shear(model, trace, path=None):
         Resulting figure and axis
     """
     fig, ax = plt.subplots(figsize=(4, 3))
-    ax.hist(trace[f'{model.n_spots}_shear'],
+    ax.hist(trace['dot_shear'],
             bins=25,
             range=[0, 0.6],
             color='k')
@@ -131,19 +131,19 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     """
     # Get median parameter values for system setup:
     n_spots = model.n_spots
-    shear = np.median(trace[f'dot_shear'])
-    complement_to_inclination = np.median(trace[f'dot_comp_inc'])
-    eq_period = np.median(trace[f'dot_P_eq'])
+    shear = np.median(trace['dot_shear'])
+    complement_to_inclination = np.median(trace['dot_comp_inc'])
+    eq_period = np.median(trace['dot_P_eq'])
 
     if isinstance(model.contrast, (float, int)):
         contrast = model.contrast
     else:
-        contrast = np.median(trace[f'dot_contrast'])
+        contrast = np.median(trace['dot_contrast'])
 
     # Define the spot properties
-    spot_lons = np.median(trace[f'dot_lon'], axis=0).ravel()
-    spot_lats = np.median(trace[f'dot_lat'], axis=0).ravel()
-    spot_rads = np.median(trace[f'dot_R_spot'], axis=0).ravel()
+    spot_lons = np.median(trace['dot_lon'], axis=0).ravel()
+    spot_lats = np.median(trace['dot_lat'], axis=0).ravel()
+    spot_rads = np.median(trace['dot_R_spot'], axis=0).ravel()
 
     # Create grid of pixels on which we will pixelate the spotted star:
     xgrid = np.linspace(-1, 1, xsize)
@@ -235,7 +235,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     # Plot the light curve
     ax_lc = plt.subplot(gs[2:])
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
-               ppc[f'dot_obs'].T,
+               ppc['dot_obs'].T,
                color='DodgerBlue', alpha=0.05)
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
                model.lc.flux[model.mask][::model.skip_n_points],
