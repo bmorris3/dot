@@ -230,7 +230,7 @@ class Model(object):
         Check that a model instance exists on this object
         """
         if self.pymc_model is None:
-            raise ValueError('Must first call `Model.construct_model` first.')
+            raise ValueError('Must first call `Model._initialize_model` first.')
 
     def sample_smc(self, draws, random_seed=42, **kwargs):
         """

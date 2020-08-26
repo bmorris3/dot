@@ -296,6 +296,9 @@ def last_step(model, trace, x=None):
     if x is None:
         x = model.lc.time[model.mask][::model.skip_n_points][:, None]
 
+    if len(x.shape) < 2:
+        x = x[:, None]
+
     x_data = model.lc.time[model.mask][::model.skip_n_points]
     y_data = model.lc.flux[model.mask][::model.skip_n_points]
     yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
@@ -307,7 +310,7 @@ def last_step(model, trace, x=None):
          "noise": yerr_data
     }
 
-    mu, var = model.pymc_gp.predict(x[:, None],
+    mu, var = model.pymc_gp.predict(x,
         point=trace[-1],
         given=given,
         diag=True,
