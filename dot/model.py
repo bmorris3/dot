@@ -60,7 +60,8 @@ class MeanModel(pm.gp.mean.Mean):
                                        shape=(1, n_spots),
                                        testval=0.3)
         self.contrast = contrast
-        self.spot_period = self.eq_period / (1 - self.shear * pm.math.sin(self.lat - np.pi / 2) ** 2)
+        self.spot_period = self.eq_period / (1 - self.shear *
+                                             pm.math.sin(self.lat - np.pi / 2) ** 2)
         self.sin_lat = pm.math.sin(self.lat)
         self.cos_lat = pm.math.cos(self.lat)
         self.sin_c_inc = pm.math.sin(self.comp_inclination)
@@ -97,7 +98,7 @@ class DisableLogger():
     """
     def __init__(self, verbose):
         self.verbose = verbose
-        
+
     def __enter__(self):
         if not self.verbose:
             logging.disable(logging.CRITICAL)
@@ -198,11 +199,11 @@ class Model(object):
             gp_white = pm.gp.Marginal(mean_func=mean_func,
                                       cov_func=pm.gp.cov.WhiteNoise(mean_err))
             gp_matern = pm.gp.Marginal(cov_func=mean_err ** 2 *
-                                                pm.gp.cov.Matern32(1, ls=ls))
+                                       pm.gp.cov.Matern32(1, ls=ls))
 
             gp = gp_white + gp_matern
 
-            y_ = gp.marginal_likelihood("y", X=x[:, None], y=y, noise=yerr)
+            gp.marginal_likelihood("y", X=x[:, None], y=y, noise=yerr)
 
         self.pymc_model = model
         self.pymc_gp = gp

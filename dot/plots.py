@@ -136,15 +136,9 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     eq_period = np.median(trace[f'dot_P_eq'])
 
     if isinstance(model.contrast, (float, int)):
-        parameters_per_spot = 3
         contrast = model.contrast
     else:
-        # TODO: implement floating contrasts
-        raise NotImplementedError('TODO: Need to implement floating contrast '
-                                  'model')
-
-    # spot_props = np.median(samples[:, 4:], axis=0).reshape((n_spots,
-    #                                                         parameters_per_spot))
+        contrast = np.median(trace[f'dot_contrast'])
 
     # Define the spot properties
     spot_lons = np.median(trace[f'dot_lon'], axis=0).ravel()
@@ -171,7 +165,9 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     for spot_ind in range(n_spots):
         # Make everything spin
         period_i = eq_period / (1 - shear * np.sin(spot_lats[spot_ind] - np.pi / 2) ** 2)
-        phi = 2 * np.pi / period_i * (model.lc.time[model.mask][::model.skip_n_points]) - spot_lons[spot_ind]
+        phi = (2 * np.pi / period_i *
+               (model.lc.time[model.mask][::model.skip_n_points]) -
+               spot_lons[spot_ind])
 
         # Compute the spot position as a function of time:
         spot_position_x = (np.cos(phi - np.pi / 2) * np.sin(complement_to_inclination) *
@@ -179,7 +175,8 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
                            np.cos(complement_to_inclination) * np.cos(spot_lats[spot_ind]))
         spot_position_y = -np.sin(phi - np.pi / 2) * np.sin(spot_lats[spot_ind])
         spot_position_z = (np.cos(spot_lats[spot_ind]) * np.sin(complement_to_inclination) -
-                           np.sin(phi) * np.cos(complement_to_inclination) * np.sin(spot_lats[spot_ind]))
+                           np.sin(phi) * np.cos(complement_to_inclination) *
+                           np.sin(spot_lats[spot_ind]))
 
         # Compute the distance from the spot to the center of the stellar disk
         rsq = spot_position_x ** 2 + spot_position_y ** 2
@@ -198,9 +195,11 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
         # Semi-major axis rotation
         A = np.pi / 2 + np.arctan2(spot_position_y, spot_position_x)[None, None, :]
         on_spot = (((xx[:, :, None] - spot_position_x[None, None, :]) * np.cos(A) +
-                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.sin(A)) ** 2 / a ** 2 +
+                    (yy[:, :, None] - spot_position_y[None, None, :]) *
+                    np.sin(A)) ** 2 / a ** 2 +
                    ((xx[:, :, None] - spot_position_x[None, None, :]) * np.sin(A) -
-                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.cos(A)) ** 2 / b ** 2 <= 1)
+                    (yy[:, :, None] - spot_position_y[None, None, :]) *
+                    np.cos(A)) ** 2 / b ** 2 <= 1)
         on_spot *= spot_position_z[None, None, :] > 0
         if contrast < 1:
             m[on_spot] *= 1 - contrast
@@ -224,13 +223,13 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     ax_image = plt.subplot(gs[0:2])
     # Plot the initial image (first frame)
     im = ax_image.imshow(m[..., 0],
-             aspect='equal',
-             cmap=plt.cm.copper,
-             extent=[-1, 1, -1, 1],
-             vmin=0,
-             vmax=ld.max(),
-             origin='lower'
-         )
+        aspect='equal',
+        cmap=plt.cm.copper,
+        extent=[-1, 1, -1, 1],
+        vmin=0,
+        vmax=ld.max(),
+        origin='lower'
+    )
     ax_image.axis('off')
 
     # Plot the light curve
