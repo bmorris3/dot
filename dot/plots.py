@@ -6,7 +6,7 @@ from matplotlib import animation
 from corner import corner as dfm_corner
 import pymc3 as pm
 
-__all__ = ['corner', 'posterior_predictive', 'movie']
+__all__ = ['corner', 'posterior_predictive', 'movie', 'gp_from_posterior']
 
 
 def corner(trace, **kwargs):
@@ -319,4 +319,59 @@ def last_step(model, trace, x=None):
     plt.errorbar(x_data, y_data, yerr_data,
                  fmt='.', color='k', ecolor='silver', zorder=10)
 
+    return plt.gca()
+
+
+def gp_from_posterior(model, trace_nuts, xnew, path):
+    """
+    Plot a GP regression with the mean model defined in ``model``, drawn from
+    the posterior distribution in ``trace_nuts``, at times ``xnew``.
+
+    Parameters
+    ----------
+    model : `~dot.Model`
+        Model object
+    trace : `~pymc3.backends.base.MultiTrace`
+        Trace from SMC/NUTS
+    xnew : `~numpy.ndarray`
+        Array of times at which to evaluate the model light curve
+    path : None or str
+        Save the resulting plot to ``path``
+    """
+    x_data = model.lc.time[model.mask][::model.skip_n_points]
+    y_data = model.lc.flux[model.mask][::model.skip_n_points]
+    yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
+
+    given = {
+        "gp": model.pymc_gp,
+        "X": x_data[:, None],
+        "y": y_data,
+        "noise": yerr_data
+    }
+
+    mu, var = model.pymc_gp.predict(xnew[:, None],
+                                    point=trace_nuts[-1],
+                                    given=given,
+                                    diag=True
+                                    )
+    sd = np.sqrt(var)
+
+    plt.fill_between(xnew, 1 + mu + sd, 1 + mu - sd,
+                     color='DodgerBlue', alpha=0.5)
+
+    plt.errorbar(x_data, 1 + y_data, yerr_data,
+                 fmt='.', color='k', ecolor='silver', zorder=10)
+
+    residuals = y_data - np.interp(x_data, xnew, mu)
+    plt.errorbar(x_data,
+                 1 + residuals + 1.25 * y_data.min(),
+                 yerr_data,
+                 fmt='.', color='k', ecolor='silver')
+
+    plt.xlabel('Time [d]')
+    plt.ylabel('Flux')
+    if path is not None:
+        plt.savefig(path,
+                    bbox_inches='tight',
+                    dpi=200)
     return plt.gca()

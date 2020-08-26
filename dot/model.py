@@ -28,8 +28,8 @@ class MeanModel(pm.gp.mean.Mean):
                                             mu=rotation_period,
                                             sigma=0.2 * rotation_period,
                                             testval=rotation_period)
-        
-        BoundedHalfNormal = pm.Bound(pm.HalfNormal, upper=0.99)
+
+        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=1e-6, upper=0.99)
         self.shear = BoundedHalfNormal("shear", sigma=0.2, testval=0.01)
 
         self.comp_inclination = pm.Uniform("comp_inc",
@@ -55,10 +55,10 @@ class MeanModel(pm.gp.mean.Mean):
                                       mu=np.pi / 2,
                                       sigma=np.pi / 2,
                                       shape=(1, n_spots))
-        self.rspot = pm.HalfNormal("R_spot",
-                                  sigma=0.2,
-                                  shape=(1, n_spots),
-                                  testval=0.3)
+        self.rspot = BoundedHalfNormal("R_spot",
+                                       sigma=0.2,
+                                       shape=(1, n_spots),
+                                       testval=0.3)
         self.contrast = contrast
         self.spot_period = self.eq_period / (1 - self.shear * pm.math.sin(self.lat - np.pi / 2) ** 2)
         self.sin_lat = pm.math.sin(self.lat)
@@ -232,8 +232,7 @@ class Model(object):
         if self.pymc_model is None:
             raise ValueError('Must first call `Model.construct_model` first.')
 
-    def sample_smc(self, draws, random_seed=42, parallel=True, cores=1,
-                   **kwargs):
+    def sample_smc(self, draws, random_seed=42, **kwargs):
         """
         Sample the posterior distribution of the model given the data using
         Sequential Monte Carlo.
@@ -256,8 +255,7 @@ class Model(object):
         self._check_model()
         with DisableLogger(self.verbose):
             with self.pymc_model:
-                trace = sample_smc(draws, random_seed=random_seed,
-                                   parallel=parallel, cores=cores, **kwargs)
+                trace = sample_smc(draws, random_seed=random_seed, **kwargs)
         return trace
 
     def sample_nuts(self, trace_smc, draws, cores=96,
