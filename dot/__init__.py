@@ -6,5 +6,5 @@
 from ._astropy_init import *   # noqa
 # ----------------------------------------------------------------------------
 
-from .model import *
-from .io import *
+from .model import *  # noqa
+from .io import *  # noqa

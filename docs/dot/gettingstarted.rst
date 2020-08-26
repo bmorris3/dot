@@ -34,6 +34,7 @@ of AB Doradus in the package, which you can access with:
 
 .. plot::
 
+    import matplotlib.pyplot as plt
     from dot import ab_dor_example_lc
 
     min_time=1335

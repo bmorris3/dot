@@ -6,7 +6,7 @@ from matplotlib import animation
 from corner import corner as dfm_corner
 import pymc3 as pm
 
-__all__ = ['corner', 'posterior_predictive', 'movie']
+__all__ = ['corner', 'posterior_predictive', 'movie', 'gp_from_posterior']
 
 
 def corner(trace, **kwargs):
@@ -52,7 +52,7 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
                  fmt='.', color='k', ecolor='silver')
 
     plt.plot(model.lc.time[model.mask][::model.skip_n_points],
-             ppc[f'{model.n_spots}_obs'].T,
+             ppc['dot_obs'].T,
              color='DodgerBlue', lw=2, alpha=0.1)
 
     plt.gca().set(xlabel='Time [d]', ylabel='Flux',
@@ -80,7 +80,7 @@ def posterior_shear(model, trace, path=None):
         Resulting figure and axis
     """
     fig, ax = plt.subplots(figsize=(4, 3))
-    ax.hist(trace[f'{model.n_spots}_shear'],
+    ax.hist(trace['dot_shear'],
             bins=25,
             range=[0, 0.6],
             color='k')
@@ -131,26 +131,19 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     """
     # Get median parameter values for system setup:
     n_spots = model.n_spots
-    shear = np.median(trace[f'{n_spots}_shear'])
-    complement_to_inclination = np.median(trace[f'{n_spots}_comp_inc'])
-    eq_period = np.median(trace[f'{n_spots}_P_eq'])
+    shear = np.median(trace['dot_shear'])
+    complement_to_inclination = np.median(trace['dot_comp_inc'])
+    eq_period = np.median(trace['dot_P_eq'])
 
     if isinstance(model.contrast, (float, int)):
-        parameters_per_spot = 3
         contrast = model.contrast
     else:
-        # TODO: implement floating contrasts
-        raise NotImplementedError('TODO: Need to implement floating contrast '
-                                  'model')
-
-    # spot_props = np.median(samples[:, 4:], axis=0).reshape((n_spots,
-    #                                                         parameters_per_spot))
+        contrast = np.median(trace['dot_contrast'])
 
     # Define the spot properties
-    print(trace[f'{n_spots}_lon'].shape)
-    spot_lons = np.median(trace[f'{n_spots}_lon'], axis=0).ravel()
-    spot_lats = np.median(trace[f'{n_spots}_lat'], axis=0).ravel()
-    spot_rads = np.median(trace[f'{n_spots}_R_spot'], axis=0).ravel()
+    spot_lons = np.median(trace['dot_lon'], axis=0).ravel()
+    spot_lats = np.median(trace['dot_lat'], axis=0).ravel()
+    spot_rads = np.median(trace['dot_R_spot'], axis=0).ravel()
 
     # Create grid of pixels on which we will pixelate the spotted star:
     xgrid = np.linspace(-1, 1, xsize)
@@ -172,8 +165,9 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     for spot_ind in range(n_spots):
         # Make everything spin
         period_i = eq_period / (1 - shear * np.sin(spot_lats[spot_ind] - np.pi / 2) ** 2)
-        phi = 2 * np.pi / period_i * (model.lc.time[model.mask][::model.skip_n_points] -
-                                      model.lc.time[model.mask].mean()) - spot_lons[spot_ind]
+        phi = (2 * np.pi / period_i *
+               (model.lc.time[model.mask][::model.skip_n_points]) -
+               spot_lons[spot_ind])
 
         # Compute the spot position as a function of time:
         spot_position_x = (np.cos(phi - np.pi / 2) * np.sin(complement_to_inclination) *
@@ -181,7 +175,8 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
                            np.cos(complement_to_inclination) * np.cos(spot_lats[spot_ind]))
         spot_position_y = -np.sin(phi - np.pi / 2) * np.sin(spot_lats[spot_ind])
         spot_position_z = (np.cos(spot_lats[spot_ind]) * np.sin(complement_to_inclination) -
-                           np.sin(phi) * np.cos(complement_to_inclination) * np.sin(spot_lats[spot_ind]))
+                           np.sin(phi) * np.cos(complement_to_inclination) *
+                           np.sin(spot_lats[spot_ind]))
 
         # Compute the distance from the spot to the center of the stellar disk
         rsq = spot_position_x ** 2 + spot_position_y ** 2
@@ -200,9 +195,11 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
         # Semi-major axis rotation
         A = np.pi / 2 + np.arctan2(spot_position_y, spot_position_x)[None, None, :]
         on_spot = (((xx[:, :, None] - spot_position_x[None, None, :]) * np.cos(A) +
-                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.sin(A)) ** 2 / a ** 2 +
+                    (yy[:, :, None] - spot_position_y[None, None, :]) *
+                    np.sin(A)) ** 2 / a ** 2 +
                    ((xx[:, :, None] - spot_position_x[None, None, :]) * np.sin(A) -
-                    (yy[:, :, None] - spot_position_y[None, None, :]) * np.cos(A)) ** 2 / b ** 2 <= 1)
+                    (yy[:, :, None] - spot_position_y[None, None, :]) *
+                    np.cos(A)) ** 2 / b ** 2 <= 1)
         on_spot *= spot_position_z[None, None, :] > 0
         if contrast < 1:
             m[on_spot] *= 1 - contrast
@@ -226,19 +223,19 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     ax_image = plt.subplot(gs[0:2])
     # Plot the initial image (first frame)
     im = ax_image.imshow(m[..., 0],
-             aspect='equal',
-             cmap=plt.cm.copper,
-             extent=[-1, 1, -1, 1],
-             vmin=0,
-             vmax=ld.max(),
-             origin='lower'
-         )
+        aspect='equal',
+        cmap=plt.cm.copper,
+        extent=[-1, 1, -1, 1],
+        vmin=0,
+        vmax=ld.max(),
+        origin='lower'
+    )
     ax_image.axis('off')
 
     # Plot the light curve
     ax_lc = plt.subplot(gs[2:])
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
-               ppc[f'{n_spots}_obs'].T,
+               ppc['dot_y'].T,
                color='DodgerBlue', alpha=0.05)
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
                model.lc.flux[model.mask][::model.skip_n_points],
@@ -282,3 +279,101 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     print('done')
 
     return fig, m
+
+
+def last_step(model, trace, x=None):
+    """
+    Plot the last step in the trace, including the GP prediction.
+
+    Parameters
+    ----------
+    model : `~dot.Model`
+        Model object
+    trace : `~pymc3.backends.base.MultiTrace`
+        Trace from SMC/NUTS
+    """
+    if x is None:
+        x = model.lc.time[model.mask][::model.skip_n_points][:, None]
+
+    if len(x.shape) < 2:
+        x = x[:, None]
+
+    x_data = model.lc.time[model.mask][::model.skip_n_points]
+    y_data = model.lc.flux[model.mask][::model.skip_n_points]
+    yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
+
+    given = {
+         "gp": model.pymc_gp,
+         "X": x_data[:, None],
+         "y": y_data,
+         "noise": yerr_data
+    }
+
+    mu, var = model.pymc_gp.predict(x,
+        point=trace[-1],
+        given=given,
+        diag=True,
+    )
+    sd = np.sqrt(var)
+    plt.fill_between(x, mu+sd, mu-sd, color='DodgerBlue', alpha=0.2)
+    plt.plot(x, mu, color='DodgerBlue')
+
+    plt.errorbar(x_data, y_data, yerr_data,
+                 fmt='.', color='k', ecolor='silver', zorder=10)
+
+    return plt.gca()
+
+
+def gp_from_posterior(model, trace_nuts, xnew, path):
+    """
+    Plot a GP regression with the mean model defined in ``model``, drawn from
+    the posterior distribution in ``trace_nuts``, at times ``xnew``.
+
+    Parameters
+    ----------
+    model : `~dot.Model`
+        Model object
+    trace : `~pymc3.backends.base.MultiTrace`
+        Trace from SMC/NUTS
+    xnew : `~numpy.ndarray`
+        Array of times at which to evaluate the model light curve
+    path : None or str
+        Save the resulting plot to ``path``
+    """
+    x_data = model.lc.time[model.mask][::model.skip_n_points]
+    y_data = model.lc.flux[model.mask][::model.skip_n_points]
+    yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
+
+    given = {
+        "gp": model.pymc_gp,
+        "X": x_data[:, None],
+        "y": y_data,
+        "noise": yerr_data
+    }
+
+    mu, var = model.pymc_gp.predict(xnew[:, None],
+                                    point=trace_nuts[-1],
+                                    given=given,
+                                    diag=True
+                                    )
+    sd = np.sqrt(var)
+
+    plt.fill_between(xnew, 1 + mu + sd, 1 + mu - sd,
+                     color='DodgerBlue', alpha=0.5)
+
+    plt.errorbar(x_data, 1 + y_data, yerr_data,
+                 fmt='.', color='k', ecolor='silver', zorder=10)
+
+    residuals = y_data - np.interp(x_data, xnew, mu)
+    plt.errorbar(x_data,
+                 1 + residuals + 1.25 * y_data.min(),
+                 yerr_data,
+                 fmt='.', color='k', ecolor='silver')
+
+    plt.xlabel('Time [d]')
+    plt.ylabel('Flux')
+    if path is not None:
+        plt.savefig(path,
+                    bbox_inches='tight',
+                    dpi=200)
+    return plt.gca()

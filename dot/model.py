@@ -1,12 +1,94 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from celerite import GP
-from celerite.terms import Matern32Term
 import pymc3 as pm
 from pymc3.smc import sample_smc
 import logging
 
 __all__ = ['Model']
+
+
+class MeanModel(pm.gp.mean.Mean):
+    """
+    Mean model for Gaussian process regression on photometry with starspots
+    """
+    def __init__(self, light_curve, rotation_period, n_spots, contrast,
+                 latitude_cutoff=10, partition_lon=True):
+        pm.gp.mean.Mean.__init__(self)
+
+        if contrast is None:
+            contrast = pm.TruncatedNormal("contrast", lower=0.01, upper=0.99,
+                                          testval=0.4, mu=0.5, sigma=0.5)
+
+        self.f0 = pm.TruncatedNormal("f0", mu=1, sigma=1,
+                                     testval=light_curve.flux.max(),
+                                     lower=-1, upper=2)
+
+        self.eq_period = pm.TruncatedNormal("P_eq",
+                                            lower=0.8 * rotation_period,
+                                            upper=1.2 * rotation_period,
+                                            mu=rotation_period,
+                                            sigma=0.2 * rotation_period,
+                                            testval=rotation_period)
+
+        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=1e-6, upper=0.99)
+        self.shear = BoundedHalfNormal("shear", sigma=0.2, testval=0.01)
+
+        self.comp_inclination = pm.Uniform("comp_inc",
+                                           lower=np.radians(0),
+                                           upper=np.radians(90),
+                                           testval=np.radians(1))
+
+        if partition_lon:
+            lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
+            lower = lon_lims[:-1]
+            upper = lon_lims[1:]
+        else:
+            lower = 0
+            upper = 2 * np.pi
+
+        self.lon = pm.Uniform("lon",
+                              lower=lower,
+                              upper=upper,
+                              shape=(1, n_spots))
+        self.lat = pm.TruncatedNormal("lat",
+                                      lower=np.radians(latitude_cutoff),
+                                      upper=np.radians(180 - latitude_cutoff),
+                                      mu=np.pi / 2,
+                                      sigma=np.pi / 2,
+                                      shape=(1, n_spots))
+        self.rspot = BoundedHalfNormal("R_spot",
+                                       sigma=0.2,
+                                       shape=(1, n_spots),
+                                       testval=0.3)
+        self.contrast = contrast
+        self.spot_period = self.eq_period / (1 - self.shear *
+                                             pm.math.sin(self.lat - np.pi / 2) ** 2)
+        self.sin_lat = pm.math.sin(self.lat)
+        self.cos_lat = pm.math.cos(self.lat)
+        self.sin_c_inc = pm.math.sin(self.comp_inclination)
+        self.cos_c_inc = pm.math.cos(self.comp_inclination)
+
+    def __call__(self, X):
+        phi = 2 * np.pi / self.spot_period * X - self.lon
+        spot_position_x = (pm.math.cos(phi - np.pi / 2) *
+                           self.sin_c_inc *
+                           self.sin_lat +
+                           self.cos_c_inc *
+                           self.cos_lat)
+        spot_position_y = -(pm.math.sin(phi - np.pi/2) *
+                            self.sin_lat)
+        spot_position_z = (self.cos_lat *
+                           self.sin_c_inc -
+                           pm.math.sin(phi) *
+                           self.cos_c_inc *
+                           self.sin_lat)
+        rsq = spot_position_x ** 2 + spot_position_y ** 2
+        spot_model = self.f0 - pm.math.sum(self.rspot ** 2 * (1 - self.contrast) *
+                                           pm.math.where(spot_position_z > 0,
+                                                         pm.math.sqrt(1 - rsq),
+                                                         0),
+                                           axis=1)
+
+        return spot_model
 
 
 class DisableLogger():
@@ -16,7 +98,7 @@ class DisableLogger():
     """
     def __init__(self, verbose):
         self.verbose = verbose
-        
+
     def __enter__(self):
         if not self.verbose:
             logging.disable(logging.CRITICAL)
@@ -27,9 +109,10 @@ class DisableLogger():
 
 
 class Model(object):
-    def __init__(self, light_curve, rotation_period, n_spots,
-                 skip_n_points=1, latitude_cutoff=10, scale_error=5,
-                 verbose=False, min_time=None, max_time=None, contrast=0.7):
+    def __init__(self, light_curve, rotation_period, n_spots, scale_errors=1,
+                 skip_n_points=1, latitude_cutoff=10, rho_factor=250,
+                 verbose=False, min_time=None, max_time=None, contrast=0.7,
+                 partition_lon=False):
         """
         Construct a new instance of `~dot.Model`.
 
@@ -42,8 +125,6 @@ class Model(object):
             Number of spots
         latitude_cutoff : float
             Don't place spots above/below this number of degrees from the pole
-        scale_error : float
-            Scale up the errorbars by a factor of `scale_error`
         verbose : bool
             Allow PyMC3 dialogs to print to stdout
         partition_lon : bool
@@ -56,6 +137,9 @@ class Model(object):
             Maximum time to consider in the model
         contrast : float or None (optional)
             Starspot contrast
+        rho_factor : float (optional)
+            Scale up the GP length scale by a factor `rho_factor`
+            larger than the estimated `rotation_period`
         """
         self.lc = light_curve
         self.pymc_model = None
@@ -63,7 +147,6 @@ class Model(object):
         self.rotation_period = rotation_period
         self.n_spots = n_spots
         self.verbose = verbose
-        self.scale_error = scale_error
 
         if min_time is None:
             min_time = self.lc.time.min() - 1
@@ -72,124 +155,61 @@ class Model(object):
 
         self.mask = (self.lc.time > min_time) & (self.lc.time < max_time)
         self.contrast = contrast
-        self._initialize_model(rotation_period, n_spots,
-                               latitude_cutoff=latitude_cutoff,
-                               scale_error=scale_error,
-                               contrast=contrast)
+        self.scale_errors = scale_errors
 
-    def gp_normalize(self, log_sigma=1, log_rho=8, plot=False):
-        """
-        Use a Matern 3/2 kernel to normalize the data by a smooth Gaussian
-        process.
+        self.pymc_model = None
+        self.pymc_gp = None
+        self.pymc_gp_white = None
+        self.pymc_gp_matern = None
 
-        Parameters
-        ----------
+        self._initialize_model(latitude_cutoff=latitude_cutoff,
+                               rho_factor=rho_factor,
+                               partition_lon=partition_lon)
 
-        Returns
-        -------
-
-        """
-        gp = GP(Matern32Term(log_sigma=log_sigma, log_rho=log_rho))
-        gp.compute(self.lc.time[self.mask] / 100, self.lc.flux_err[self.mask])
-        gp_trend = gp.predict(self.lc.flux[self.mask],
-                              self.lc.time[self.mask] / 100,
-                              return_cov=False)
-        if plot:
-            plt.plot(self.lc.time[self.mask], self.lc.flux[self.mask])
-            plt.plot(self.lc.time[self.mask], gp_trend)
-            plt.show()
-
-        self.lc.flux /= gp_trend
-
-    def _initialize_model(self, rotation_period, n_spots, latitude_cutoff=10,
-                          scale_error=5, partition_lon=True,
-                          contrast=0.7):
+    def _initialize_model(self, latitude_cutoff, partition_lon, rho_factor):
         """
         Construct a PyMC3 model instance for use with samplers.
 
         Parameters
         ----------
-        rotation_period : float
-            Stellar rotation period
-        n_spots : int
-            Number of spots
         latitude_cutoff : float
             Don't place spots above/below this number of degrees from the pole
-        scale_error : float
-            Scale up the errorbars by a factor of `scale_error`
         partition_lon : bool
             Enforce strict partitions on star in longitude for sampling
-        contrast : float or None
-            Starspot contrast
+        rho_factor : float
+            Scale up the GP length scale by a factor `rho_factor`
+            larger than the estimated `rotation_period`
         """
-        with pm.Model(name=f'{n_spots}') as model:
-            f0 = pm.Normal("f0", sigma=0.1)
-            eq_period = pm.TruncatedNormal("P_eq",
-                                           lower=0.4 * rotation_period,
-                                           upper=1.5 * rotation_period,
-                                           mu=rotation_period,
-                                           sigma=0.2 * rotation_period)
-            shear = pm.HalfNormal("shear",
-                                  sigma=0.2)
-            comp_inclination = pm.Uniform("comp_inc",
-                                          lower=np.radians(0),
-                                          upper=np.radians(90))
+        with pm.Model(name='dot') as model:
+            mean_func = MeanModel(
+                  self.lc,
+                  self.rotation_period,
+                  n_spots=self.n_spots,
+                  latitude_cutoff=latitude_cutoff,
+                  contrast=self.contrast,
+                  partition_lon=partition_lon
+            )
 
-            if partition_lon:
-                lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
-                lower = lon_lims[:-1]
-                upper = lon_lims[1:]
-            else:
-                lower = 0
-                upper = 2 * np.pi
+            x = self.lc.time[self.mask][::self.skip_n_points]
+            y = self.lc.flux[self.mask][::self.skip_n_points]
+            yerr = self.scale_errors * self.lc.flux_err[self.mask][::self.skip_n_points]
 
-            lon = pm.Uniform("lon",
-                             lower=lower,
-                             upper=upper,
-                             shape=(1, n_spots))
-            lat = pm.TruncatedNormal("lat",
-                                     lower=np.radians(latitude_cutoff),
-                                     upper=np.radians(180 - latitude_cutoff),
-                                     mu=np.pi / 2,
-                                     sigma=np.pi / 2,
-                                     shape=(1, n_spots))
-            rspot = pm.HalfNormal("R_spot",
-                                  sigma=0.1,
-                                  shape=(1, n_spots))
+            ls = rho_factor * self.rotation_period
+            mean_err = yerr.mean()
+            gp_white = pm.gp.Marginal(mean_func=mean_func,
+                                      cov_func=pm.gp.cov.WhiteNoise(mean_err))
+            gp_matern = pm.gp.Marginal(cov_func=mean_err ** 2 *
+                                       pm.gp.cov.Matern32(1, ls=ls))
 
-            spot_period = eq_period / (1 - shear * pm.math.sin(lat - np.pi / 2) ** 2)
-            phi = 2 * np.pi / spot_period * (self.lc.time[self.mask][::self.skip_n_points][:, None] -
-                                             self.lc.time.mean()) - lon
+            gp = gp_white + gp_matern
 
-            spot_position_x = (pm.math.cos(phi - np.pi / 2) *
-                               pm.math.sin(comp_inclination) *
-                               pm.math.sin(lat) +
-                               pm.math.cos(comp_inclination) *
-                               pm.math.cos(lat))
-            spot_position_y = -(pm.math.sin(phi - np.pi/2) *
-                                pm.math.sin(lat))
-            spot_position_z = (pm.math.cos(lat) *
-                               pm.math.sin(comp_inclination) -
-                               pm.math.sin(phi) *
-                               pm.math.cos(comp_inclination) *
-                               pm.math.sin(lat))
-            rsq = spot_position_x ** 2 + spot_position_y ** 2
-            if contrast is None:
-                contrast = pm.TruncatedNormal('contrast',
-                                              lower=0.01,
-                                              upper=0.99,
-                                              mu=0.5,
-                                              sigma=0.5)
-            spot_model = 1 + f0 - pm.math.sum(rspot ** 2 * (1 - contrast) *
-                                              pm.math.where(spot_position_z > 0,
-                                                            pm.math.sqrt(1 - rsq),
-                                                            0), axis=1)
-
-            pm.Normal("obs", mu=spot_model,
-                      sigma=scale_error * self.lc.flux_err[self.mask][::self.skip_n_points],
-                      observed=self.lc.flux[self.mask][::self.skip_n_points])
+            gp.marginal_likelihood("y", X=x[:, None], y=y, noise=yerr)
 
         self.pymc_model = model
+        self.pymc_gp = gp
+        self.pymc_gp_white = gp_white
+        self.pymc_gp_matern = gp_matern
+
         return self.pymc_model
 
     def __enter__(self):
@@ -211,10 +231,9 @@ class Model(object):
         Check that a model instance exists on this object
         """
         if self.pymc_model is None:
-            raise ValueError('Must first call `Model.construct_model` first.')
+            raise ValueError('Must first call `Model._initialize_model` first.')
 
-    def sample_smc(self, draws, random_seed=42, parallel=True, cores=1,
-                   **kwargs):
+    def sample_smc(self, draws, random_seed=42, **kwargs):
         """
         Sample the posterior distribution of the model given the data using
         Sequential Monte Carlo.
@@ -237,8 +256,7 @@ class Model(object):
         self._check_model()
         with DisableLogger(self.verbose):
             with self.pymc_model:
-                trace = sample_smc(draws, random_seed=random_seed,
-                                   parallel=parallel, cores=cores, **kwargs)
+                trace = sample_smc(draws, random_seed=random_seed, **kwargs)
         return trace
 
     def sample_nuts(self, trace_smc, draws, cores=96,
