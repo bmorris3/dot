@@ -1,6 +1,7 @@
 import os
 import pickle
 import numpy as np
+import math
 import pandas as pd
 from lightkurve import LightCurve, search_lightcurvefile
 import h5py
@@ -176,6 +177,12 @@ def load_rotation_period(kic, data_path=None, index_file=None):
     prot : float
         McQuillan rotation period
     """
+
+    # Convert into integer to load data locally
+    try:
+        kic = int(kic)
+    except:
+        pass
 
     if data_path is None:
         data_path = hdf5_archive_disk

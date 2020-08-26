@@ -12,17 +12,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from dot import Model, save_results, load_results, ab_dor_example_lc
-from dot import load_light_curve
+from dot import Model, save_results, load_results, ab_dor_example_lc, load_light_curve, load_rotation_period
 from dot.plots import corner, posterior_shear,  posterior_predictive, movie
 
 import warnings
 warnings.filterwarnings("ignore")
 
 # Adapted from https://github.com/bmorris3/dot/blob/master/example.py
-
-hdf5_archive_disk = '/110k_pdcsap/'
-hdf5_index_path = '110k_rotation_mcquillan_pdcsap_smooth_index_0724.csv'
 
 def run_dot(args):
 
@@ -51,11 +47,6 @@ def run_dot(args):
 
     # Get Kepler data locally or from lightkurve
     if mission=="Kepler":
-        # # Convert into integer to load data locally
-        # try:
-        #     target = int(target)
-        # except:
-        #     pass
         print(f'Loading light curve for KIC {target}...')
         lc = load_light_curve(target)
         # Extract rotation periods
