@@ -166,7 +166,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
         # Make everything spin
         period_i = eq_period / (1 - shear * np.sin(spot_lats[spot_ind] - np.pi / 2) ** 2)
         phi = (2 * np.pi / period_i *
-               (model.lc.time[model.mask][::model.skip_n_points] % period_i) -
+               model.lc.time[model.mask][::model.skip_n_points] -
                spot_lons[spot_ind])
 
         # Compute the spot position as a function of time:
