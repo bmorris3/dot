@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import pymc3 as pm
 from pymc3.smc import sample_smc
-
+import theano.tensor as tt
 
 __all__ = ['Model']
 
@@ -21,7 +21,7 @@ class MeanModel(pm.gp.mean.Mean):
                                           testval=0.4, mu=0.5, sigma=0.5)
 
         self.f0 = pm.TruncatedNormal("f0", mu=0, sigma=1,
-                                     testval=light_curve.flux.max(),
+                                     testval=np.percentile(light_curve.flux, 80),
                                      lower=-1, upper=2)
 
         self.eq_period = pm.TruncatedNormal("P_eq",
@@ -31,7 +31,7 @@ class MeanModel(pm.gp.mean.Mean):
                                             sigma=0.2 * rotation_period,
                                             testval=rotation_period)
 
-        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=1e-6, upper=0.99)
+        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=1e-6, upper=0.8)
         self.shear = BoundedHalfNormal("shear", sigma=0.2, testval=0.01)
 
         self.comp_inclination = pm.Uniform("comp_inc",
@@ -62,8 +62,14 @@ class MeanModel(pm.gp.mean.Mean):
                                        shape=(1, n_spots),
                                        testval=0.3)
         self.contrast = contrast
-        self.spot_period = self.eq_period / (1 - self.shear *
-                                             pm.math.sin(self.lat - np.pi / 2) ** 2)
+
+        # Need to wrap this equation with a where statement so that there isn't
+        # a divide by zero in the tensor math (even though these parameters are
+        # bounded to prevent this from happening during sampling)
+        self.spot_period = pm.math.where(self.shear < 1,
+                                         self.eq_period / (1 - self.shear *
+                                             pm.math.sin(self.lat - np.pi / 2) ** 2),
+                                         self.eq_period)
         self.sin_lat = pm.math.sin(self.lat)
         self.cos_lat = pm.math.cos(self.lat)
         self.sin_c_inc = pm.math.sin(self.comp_inclination)
