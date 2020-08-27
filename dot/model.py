@@ -10,7 +10,7 @@ class MeanModel(pm.gp.mean.Mean):
     """
     Mean model for Gaussian process regression on photometry with starspots
     """
-    def __init__(self, light_curve, rotation_period, n_spots, contrast,
+    def __init__(self, light_curve, rotation_period, n_spots, contrast, t0,
                  latitude_cutoff=10, partition_lon=True):
         pm.gp.mean.Mean.__init__(self)
 
@@ -18,7 +18,7 @@ class MeanModel(pm.gp.mean.Mean):
             contrast = pm.TruncatedNormal("contrast", lower=0.01, upper=0.99,
                                           testval=0.4, mu=0.5, sigma=0.5)
 
-        self.f0 = pm.TruncatedNormal("f0", mu=1, sigma=1,
+        self.f0 = pm.TruncatedNormal("f0", mu=0, sigma=1,
                                      testval=light_curve.flux.max(),
                                      lower=-1, upper=2)
 
@@ -66,9 +66,10 @@ class MeanModel(pm.gp.mean.Mean):
         self.cos_lat = pm.math.cos(self.lat)
         self.sin_c_inc = pm.math.sin(self.comp_inclination)
         self.cos_c_inc = pm.math.cos(self.comp_inclination)
+        self.t0 = t0
 
     def __call__(self, X):
-        phi = 2 * np.pi / self.spot_period * X - self.lon
+        phi = 2 * np.pi / self.spot_period * (X - self.t0) - self.lon
         spot_position_x = (pm.math.cos(phi - np.pi / 2) *
                            self.sin_c_inc *
                            self.sin_lat +
@@ -149,11 +150,11 @@ class Model(object):
         self.verbose = verbose
 
         if min_time is None:
-            min_time = self.lc.time.min() - 1
+            min_time = self.lc.time.min()
         if max_time is None:
-            max_time = self.lc.time.max() + 1
+            max_time = self.lc.time.max()
 
-        self.mask = (self.lc.time > min_time) & (self.lc.time < max_time)
+        self.mask = (self.lc.time >= min_time) & (self.lc.time <= max_time)
         self.contrast = contrast
         self.scale_errors = scale_errors
 
@@ -187,6 +188,7 @@ class Model(object):
                   n_spots=self.n_spots,
                   latitude_cutoff=latitude_cutoff,
                   contrast=self.contrast,
+                  t0=self.lc.time[self.mask][::self.skip_n_points].mean(),
                   partition_lon=partition_lon
             )
 
