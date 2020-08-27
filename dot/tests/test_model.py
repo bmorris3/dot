@@ -3,6 +3,7 @@ import numpy as np
 from ..model import Model
 from ..io import ab_dor_example_lc
 
+
 def test_model_optimizer():
 
     lc = ab_dor_example_lc()
