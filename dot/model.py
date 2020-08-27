@@ -296,7 +296,7 @@ class Model(object):
 
         return trace, summary
 
-    def optimize(self, start=None, **kwargs):
+    def optimize(self, start=None, plot=False, **kwargs):
         """
         Optimize the free parameters in `Model` using
         `~scipy.optimize.minimize` via `~exoplanet.optimize`
@@ -308,6 +308,19 @@ class Model(object):
         with self.pymc_model:
             map_soln = optimize(start=start, **kwargs)
 
+        if plot:
+            best_fit = self(map_soln)
+
+            import matplotlib.pyplot as plt
+            ax = plt.gca()
+            ax.errorbar(self.lc.time[self.mask][::self.skip_n_points],
+                        self.lc.flux[self.mask][::self.skip_n_points],
+                        self.lc.flux_err[self.mask][::self.skip_n_points],
+                        fmt='.', color='k', ecolor='silver', label='obs')
+            ax.plot(self.lc.time[self.mask][::self.skip_n_points],
+                    best_fit, label='dot')
+            ax.set(xlabel='Time', ylabel='Flux')
+            ax.legend(loc='lower left')
         return map_soln
 
     def __call__(self, point=None, **kwargs):

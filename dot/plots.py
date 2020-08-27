@@ -53,7 +53,7 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
 
     plt.plot(model.lc.time[model.mask][::model.skip_n_points],
              ppc['dot_y'].T,
-             color='DodgerBlue', lw=2, alpha=0.1)
+             color='DodgerBlue', lw=2, alpha=10/samples)
 
     plt.gca().set(xlabel='Time [d]', ylabel='Flux',
                   xlim=[model.lc.time[model.mask].min(),
