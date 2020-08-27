@@ -1,7 +1,3 @@
-.. image:: https://vectr.com/bmmorris/a1PT00ATbi.png?width=300&height=300&select=a1PT00ATbipage0
-    :align: right
-    :width: 300
-
 dot
 ---
 
@@ -15,6 +11,10 @@ dot
 .. image:: http://img.shields.io/badge/powered%20by-AstroPy-orange.svg?style=flat
     :target: http://www.astropy.org
     :alt: Powered by Astropy Badge
+
+.. raw:: html
+
+    <img src="https://vectr.com/bmmorris/a1PT00ATbi.png?width=300&height=300&select=a1PT00ATbipage0"  style="float:right">
 
 Dot is a forward model for starspot rotational modulation in Python.
 It is similar to `fleck <http://fleck.readthedocs.io>`_

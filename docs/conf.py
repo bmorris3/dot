@@ -201,3 +201,5 @@ github_issues_url = 'https://github.com/{0}/issues/'.format(setup_cfg['github_pr
 intersphinx_mapping['pymc3'] = ('https://docs.pymc.io/', None)
 intersphinx_mapping['lightkurve'] = ('https://docs.lightkurve.org/', None)
 intersphinx_mapping['pandas'] = ('https://pandas.pydata.org/docs/', None)
+intersphinx_mapping['exoplanet'] = ('https://docs.exoplanet.codes/en/stable/',
+                                    None)
