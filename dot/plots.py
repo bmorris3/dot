@@ -166,7 +166,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
         # Make everything spin
         period_i = eq_period / (1 - shear * np.sin(spot_lats[spot_ind] - np.pi / 2) ** 2)
         phi = (2 * np.pi / period_i *
-               (model.lc.time[model.mask][::model.skip_n_points]) -
+               model.lc.time[model.mask][::model.skip_n_points] -
                spot_lons[spot_ind])
 
         # Compute the spot position as a function of time:
@@ -183,7 +183,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
 
         # Foreshorten the spots as they approach the limb,
         # mask the spots that land on the opposite stellar hemisphere
-        spot_model -= (spot_rads[spot_ind] ** 2 * (1 - model.contrast) *
+        spot_model -= (spot_rads[spot_ind] ** 2 * (1 - contrast) *
                        np.where(spot_position_z > 0, np.sqrt(1 - rsq), 0))
 
         foreshorten_semiminor_axis = np.sqrt(1 - rsq)
@@ -245,7 +245,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     if artifical_photometry:
         artifical_lc = m.sum(axis=(0, 1))
         ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
-                   artifical_lc/artifical_lc.mean(), color='r')
+                   artifical_lc/artifical_lc.mean() - 1, color='r')
 
     ax_lc.set(xlabel='Time', ylabel='Flux')
 
