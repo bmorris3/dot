@@ -72,12 +72,12 @@ initialize with some key parameters particular to this model:
         light_curve=lc,
         rotation_period=0.5,
         n_spots=2,
-        skip_n_points=20,
+        skip_n_points=10,
         min_time=min_time,
         max_time=max_time
     )
 
-We've constructed a model light curve which will only compare to every 20th
+We've constructed a model light curve which will only compare to every tenth
 observation in the ``lc`` object to speed up computation times in this tutorial.
 In real observations, you should make ``skip_n_points`` closer to unity.
 
@@ -108,7 +108,7 @@ our errorbar scaling is appropriate, and the number of spots is a good guess:
         light_curve=lc,
         rotation_period=0.5,
         n_spots=2,
-        skip_n_points=20,
+        skip_n_points=10,
         min_time=min_time,
         max_time=max_time
     )
@@ -176,7 +176,7 @@ Finally, let's plot our results:
         light_curve=lc,
         rotation_period=0.5,
         n_spots=2,
-        skip_n_points=20,
+        skip_n_points=10,
         min_time=min_time,
         max_time=max_time
     )
