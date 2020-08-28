@@ -31,12 +31,13 @@ class MeanModel(pm.gp.mean.Mean):
                                             sigma=0.2 * rotation_period,
                                             testval=rotation_period)
 
-        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=1e-6, upper=0.8)
+        eps = 1e-5  # Small but non-zero number
+        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
         self.shear = BoundedHalfNormal("shear", sigma=0.2, testval=0.01)
 
         self.comp_inclination = pm.Uniform("comp_inc",
-                                           lower=np.radians(0),
-                                           upper=np.radians(90),
+                                           lower=np.radians(eps),
+                                           upper=np.radians(90-eps),
                                            testval=np.radians(1))
 
         if partition_lon:
@@ -78,6 +79,7 @@ class MeanModel(pm.gp.mean.Mean):
 
     def __call__(self, X):
         phi = 2 * np.pi / self.spot_period * (X - self.t0) - self.lon
+
         spot_position_x = (pm.math.cos(phi - np.pi / 2) *
                            self.sin_c_inc *
                            self.sin_lat +
