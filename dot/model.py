@@ -44,20 +44,23 @@ class MeanModel(pm.gp.mean.Mean):
             lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
             lower = lon_lims[:-1]
             upper = lon_lims[1:]
+            testval = np.mean([lower, upper], axis=0)
         else:
             lower = 0
             upper = 2 * np.pi
+            testval = 2 * np.pi * np.arange(n_spots) / n_spots + 0.01
 
         self.lon = pm.Uniform("lon",
                               lower=lower,
                               upper=upper,
-                              shape=(1, n_spots))
-        self.lat = pm.TruncatedNormal("lat",
-                                      lower=np.radians(latitude_cutoff),
-                                      upper=np.radians(180 - latitude_cutoff),
-                                      mu=np.pi / 2,
-                                      sigma=np.pi / 2,
-                                      shape=(1, n_spots))
+                              shape=(1, n_spots),
+                              testval=testval)
+        self.lat = pm.Uniform("lat",
+                              lower=np.radians(latitude_cutoff),
+                              upper=np.radians(180 - latitude_cutoff),
+                              shape=(1, n_spots),
+                              testval=np.pi/2)
+
         self.rspot = BoundedHalfNormal("R_spot",
                                        sigma=0.2,
                                        shape=(1, n_spots),

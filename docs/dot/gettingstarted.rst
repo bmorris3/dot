@@ -74,7 +74,8 @@ initialize with some key parameters particular to this model:
         n_spots=2,
         skip_n_points=10,
         min_time=min_time,
-        max_time=max_time
+        max_time=max_time,
+        scale_errors=10
     )
 
 We've constructed a model light curve which will only compare to every tenth
@@ -110,7 +111,8 @@ our errorbar scaling is appropriate, and the number of spots is a good guess:
         n_spots=2,
         skip_n_points=10,
         min_time=min_time,
-        max_time=max_time
+        max_time=max_time,
+        scale_errors=10
     )
 
     map_soln = m.optimize(plot=True)
@@ -178,7 +180,8 @@ Finally, let's plot our results:
         n_spots=2,
         skip_n_points=10,
         min_time=min_time,
-        max_time=max_time
+        max_time=max_time,
+        scale_errors=10
     )
 
     trace_smc = m.sample_smc(draws=50)
