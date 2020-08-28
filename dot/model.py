@@ -4,6 +4,7 @@ import numpy as np
 import pymc3 as pm
 from pymc3.smc import sample_smc
 
+
 __all__ = ['Model']
 
 

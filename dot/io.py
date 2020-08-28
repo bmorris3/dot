@@ -1,13 +1,14 @@
 import os
 import pickle
 import numpy as np
+import math
 import pandas as pd
 from lightkurve import LightCurve, search_lightcurvefile
 import h5py
 
 
 __all__ = ['save_results', 'load_results', 'ab_dor_example_lc',
-           'load_light_curve']
+           'load_light_curve', 'load_rotation_period']
 
 hdf5_archive_disk = '/110k_pdcsap/'
 hdf5_index_path = '110k_rotation_mcquillan_pdcsap_smooth_index_0724.csv'
@@ -124,6 +125,13 @@ def load_from_hdf5(kic, data_path=None, index_file=None):
         index_file = hdf5_index_path
     index_path = os.path.join(data_path, index_file)
     stars_index = pd.read_csv(index_path)
+
+    # Convert into integer to load data locally
+    try:
+        kic = int(kic)
+    except:
+        pass
+
     star_path_list = stars_index.loc[stars_index["KIC"] == kic]["filepath"].values
     if len(star_path_list) == 0:
         raise ValueError(f'Target KIC {kic} not in database.')
@@ -150,3 +158,42 @@ def download_from_lightkurve(kic):
         mission='Kepler'
     ).download_all().PDCSAP_FLUX.stitch()
     return lc
+
+
+def load_rotation_period(kic, data_path=None, index_file=None):
+    """
+    Extract McQuillan rotation period from KIC number on google cloud platform.
+
+    Parameters
+    ----------
+    kic : int
+        Kepler Input Catalog number
+    data_path : str
+        Path to locally stored data
+    index_file : str
+        Index csv containing McQuillan rotation periods
+    Returns
+    -------
+    prot : float
+        McQuillan rotation period
+    """
+
+    # Convert into integer to load data locally
+    try:
+        kic = int(kic)
+    except:
+        pass
+
+    if data_path is None:
+        data_path = hdf5_archive_disk
+    if index_file is None:
+        index_file = hdf5_index_path
+    index_path = os.path.join(data_path, index_file)
+    stars_index = pd.read_csv(index_path)
+    star_prot_list = stars_index.loc[stars_index["KIC"] == kic]["PRot"].values
+    if not math.isfinite(star_prot_list[0]):
+        raise ValueError(f'Target KIC {kic} does not have a McQuillan period.')
+    else:
+        print(f'Using McQuillan period for KIC {kic}.')
+        star_prot = star_prot_list[0]
+        return star_prot
