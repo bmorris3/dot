@@ -77,7 +77,7 @@ initialize with some key parameters particular to this model:
         max_time=max_time
     )
 
-We've constructed a model light curve which will only compare to every 20th
+We've constructed a model light curve which will only compare to every tenth
 observation in the ``lc`` object to speed up computation times in this tutorial.
 In real observations, you should make ``skip_n_points`` closer to unity.
 
