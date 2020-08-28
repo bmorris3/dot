@@ -43,7 +43,7 @@ def test_model_optimizer():
 # of the chi^2 computation with the 1e-9 and make sure it's smaller, i.e.
 # we test for excellent agreement between fleck and dot.
 @pytest.mark.parametrize("test_input,expected",
-                         [((lons, lats, rads, inc), 1e-9)
+                         [((lons, lats, rads, inc), -6)
                           for lons, lats, rads, inc in
                           zip(lon_grid, lat_grid, rad_grid, inc_grid)])
 def test_against_fleck(test_input, expected):
