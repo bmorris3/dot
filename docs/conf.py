@@ -76,8 +76,10 @@ copyright = '{0}, {1}'.format(
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 
-import_module(setup_cfg['name'])
-package = sys.modules[setup_cfg['name']]
+# Note: For dot, the package name is different from the project name!
+package_name = 'dot'
+import_module(package_name)
+package = sys.modules[package_name]
 
 # The short X.Y version.
 version = package.__version__.split('-', 1)[0]
