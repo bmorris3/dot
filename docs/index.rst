@@ -14,9 +14,11 @@ is `available on GitHub <https://github.com/bmorris3/dot>`_.
 .. toctree::
   :maxdepth: 2
 
+  dot/install.rst
   dot/gettingstarted.rst
   dot/plots.rst
   dot/index.rst
+  dot/dev.rst
 
 Acknowledgements
 ----------------
