@@ -52,7 +52,7 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
                  fmt='.', color='k', ecolor='silver')
 
     plt.plot(model.lc.time[model.mask][::model.skip_n_points],
-             ppc['dot_y'].T,
+             ppc['dot_y'].T / model.scale_fluxes,
              color='DodgerBlue', lw=2, alpha=10/samples)
 
     plt.gca().set(xlabel='Time [d]', ylabel='Flux',
@@ -235,7 +235,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     # Plot the light curve
     ax_lc = plt.subplot(gs[2:])
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
-               ppc['dot_y'].T,
+               ppc['dot_y'].T / model.scale_fluxes,
                color='DodgerBlue', alpha=0.05)
     ax_lc.plot(model.lc.time[model.mask][::model.skip_n_points],
                model.lc.flux[model.mask][::model.skip_n_points],
@@ -299,8 +299,8 @@ def last_step(model, trace, x=None):
         x = x[:, None]
 
     x_data = model.lc.time[model.mask][::model.skip_n_points]
-    y_data = model.lc.flux[model.mask][::model.skip_n_points]
-    yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
+    y_data = model.scale_fluxes * model.lc.flux[model.mask][::model.skip_n_points]
+    yerr_data = model.scale_fluxes * model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
 
     given = {
          "gp": model.pymc_gp,
@@ -315,10 +315,11 @@ def last_step(model, trace, x=None):
         diag=True,
     )
     sd = np.sqrt(var)
-    plt.fill_between(x, mu+sd, mu-sd, color='DodgerBlue', alpha=0.2)
-    plt.plot(x, mu, color='DodgerBlue')
+    plt.fill_between(x[:, 0], (mu+sd) / model.scale_fluxes, 
+                     (mu-sd) / model.scale_fluxes, color='DodgerBlue', alpha=0.2)
+    plt.plot(x[:, 0], mu / model.scale_fluxes, color='DodgerBlue')
 
-    plt.errorbar(x_data, y_data, yerr_data,
+    plt.errorbar(x_data, y_data / model.scale_fluxes, yerr_data / model.scale_fluxes,
                  fmt='.', color='k', ecolor='silver', zorder=10)
 
     return plt.gca()

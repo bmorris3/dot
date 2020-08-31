@@ -12,7 +12,7 @@ class MeanModel(pm.gp.mean.Mean):
     Mean model for Gaussian process regression on photometry with starspots
     """
     def __init__(self, light_curve, rotation_period, n_spots, contrast, t0,
-                 latitude_cutoff=10, partition_lon=True):
+                 latitude_cutoff=10, partition_lon=True, scale_fluxes=100):
         pm.gp.mean.Mean.__init__(self)
 
         if contrast is None:
@@ -30,7 +30,7 @@ class MeanModel(pm.gp.mean.Mean):
                                             sigma=0.2 * rotation_period,
                                             testval=rotation_period)
 
-        eps = 1e-5  # Small but non-zero number
+        eps = 1e-3  # Small but non-zero number
         BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
         self.shear = BoundedHalfNormal("shear", sigma=0.2, testval=0.01)
 
@@ -43,17 +43,18 @@ class MeanModel(pm.gp.mean.Mean):
             lon_lims = 2 * np.pi * np.arange(n_spots + 1) / n_spots
             lower = lon_lims[:-1]
             upper = lon_lims[1:]
-            testval = np.mean([lower, upper], axis=0)
+            testval = np.mean([lower, upper], axis=0)[None, :]
         else:
-            lower = 0
-            upper = 2 * np.pi
-            testval = 2 * np.pi * np.arange(n_spots) / n_spots + 0.01
-
+            lower = 0 * np.ones((1, n_spots))
+            upper = 2 * np.pi * np.ones((1, n_spots))
+            testval = 2 * np.pi * np.arange(0.5, n_spots+0.5)[None, :] / n_spots
+            
         self.lon = pm.Uniform("lon",
-                              lower=lower,
-                              upper=upper,
+                              lower=lower + eps,
+                              upper=upper - eps,
                               shape=(1, n_spots),
                               testval=testval)
+
         self.lat = pm.Uniform("lat",
                               lower=np.radians(latitude_cutoff),
                               upper=np.radians(180 - latitude_cutoff),
@@ -69,7 +70,7 @@ class MeanModel(pm.gp.mean.Mean):
         # Need to wrap this equation with a where statement so that there isn't
         # a divide by zero in the tensor math (even though these parameters are
         # bounded to prevent this from happening during sampling)
-        self.spot_period = pm.math.where(self.shear < 1,
+        self.spot_period = pm.math.where(pm.math.neq(self.shear, 1),
                                          self.eq_period / (1 - self.shear *
                                              pm.math.sin(self.lat - np.pi / 2) ** 2),
                                          self.eq_period)
@@ -78,8 +79,12 @@ class MeanModel(pm.gp.mean.Mean):
         self.sin_c_inc = pm.math.sin(self.comp_inclination)
         self.cos_c_inc = pm.math.cos(self.comp_inclination)
         self.t0 = t0
+        self.scale_fluxes = scale_fluxes
 
-    def __call__(self, X):
+    def __call__(self, X, scale_fluxes=None):
+        if scale_fluxes is None: 
+            scale_fluxes = self.scale_fluxes
+        
         phi = 2 * np.pi / self.spot_period * (X - self.t0) - self.lon
 
         spot_position_x = (pm.math.cos(phi - np.pi / 2) *
@@ -95,11 +100,11 @@ class MeanModel(pm.gp.mean.Mean):
                            self.cos_c_inc *
                            self.sin_lat)
         rsq = spot_position_x ** 2 + spot_position_y ** 2
-        spot_model = self.f0 - pm.math.sum(self.rspot ** 2 * (1 - self.contrast) *
-                                           pm.math.where(spot_position_z > 0,
-                                                         pm.math.sqrt(1 - rsq),
-                                                         0),
-                                           axis=1)
+        spot_model = scale_fluxes * (self.f0 - pm.math.sum(self.rspot ** 2 * (1 - self.contrast) *
+                                                           pm.math.where(pm.math.gt(spot_position_z, 0),
+                                                                         pm.math.sqrt(1 - rsq),
+                                                                         0),
+                                                           axis=1))
 
         return spot_model
 
@@ -125,7 +130,7 @@ class Model(object):
     def __init__(self, light_curve, rotation_period, n_spots, scale_errors=1,
                  skip_n_points=1, latitude_cutoff=10, rho_factor=250,
                  verbose=False, min_time=None, max_time=None, contrast=0.7,
-                 partition_lon=False):
+                 partition_lon=False, scale_fluxes=100):
         """
         Construct a new instance of `~dot.Model`.
 
@@ -169,12 +174,13 @@ class Model(object):
         self.mask = (self.lc.time >= min_time) & (self.lc.time <= max_time)
         self.contrast = contrast
         self.scale_errors = scale_errors
-
+        self.scale_fluxes = scale_fluxes
+        
         self.pymc_model = None
         self.pymc_gp = None
         self.pymc_gp_white = None
         self.pymc_gp_matern = None
-
+        
         self._initialize_model(latitude_cutoff=latitude_cutoff,
                                rho_factor=rho_factor,
                                partition_lon=partition_lon)
@@ -201,12 +207,13 @@ class Model(object):
                   latitude_cutoff=latitude_cutoff,
                   contrast=self.contrast,
                   t0=self.lc.time[self.mask][::self.skip_n_points].mean(),
-                  partition_lon=partition_lon
+                  partition_lon=partition_lon,
+                  scale_fluxes=self.scale_fluxes
             )
 
             x = self.lc.time[self.mask][::self.skip_n_points]
-            y = self.lc.flux[self.mask][::self.skip_n_points]
-            yerr = self.scale_errors * self.lc.flux_err[self.mask][::self.skip_n_points]
+            y = self.scale_fluxes * self.lc.flux[self.mask][::self.skip_n_points]
+            yerr = self.scale_fluxes * self.scale_errors * self.lc.flux_err[self.mask][::self.skip_n_points]
 
             ls = rho_factor * self.rotation_period
             mean_err = yerr.mean()
@@ -274,7 +281,8 @@ class Model(object):
                 trace = sample_smc(draws, random_seed=random_seed, **kwargs)
         return trace
 
-    def sample_nuts(self, trace_smc, draws, cores=96,
+    def sample_nuts(self, start=None, trace_smc=None, 
+                    map_soln=None, draws=1000, cores=96,
                     target_accept=0.99, **kwargs):
         """
         Sample the posterior distribution of the model given the data using
@@ -299,8 +307,13 @@ class Model(object):
         self._check_model()
         with DisableLogger(self.verbose):
             with self.pymc_model:
+                
+                if trace_smc is not None: 
+                    start = trace_smc.point(-1)
+                elif map_soln is not None: 
+                    start = map_soln
                 trace = pm.sample(draws,
-                                  start=trace_smc.point(-1), cores=cores,
+                                  start=start, cores=cores,
                                   target_accept=target_accept, **kwargs)
                 summary = pm.summary(trace)
 
@@ -347,4 +360,4 @@ class Model(object):
                 point=point,
                 **kwargs
             )
-        return result
+        return result / self.scale_fluxes
