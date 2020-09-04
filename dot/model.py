@@ -33,10 +33,9 @@ class MeanModel(pm.gp.mean.Mean):
         self.ln_shear = pm.Uniform("ln_shear", lower=-5, upper=np.log(0.8),
                                    testval=np.log(0.1))
 
-        eps = 1e-5  # Small but non-zero number
         self.comp_inclination = pm.Uniform("comp_inc",
-                                           lower=np.radians(eps),
-                                           upper=np.radians(90-eps),
+                                           lower=0,
+                                           upper=np.pi/2,
                                            testval=np.radians(1))
 
         if partition_lon:
@@ -60,6 +59,7 @@ class MeanModel(pm.gp.mean.Mean):
                               shape=(1, n_spots),
                               testval=np.pi/2)
 
+        eps = 1e-5  # Small but non-zero number
         BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
         self.rspot = BoundedHalfNormal("R_spot",
                                        sigma=0.2,
