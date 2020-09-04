@@ -84,7 +84,9 @@ In real observations, you should make ``skip_n_points`` closer to unity.
 
 The first thing we should do is check if our model can approximate the data.
 Here's a quick sanity check that our model is defined on the correct bounds,
-our errorbar scaling is appropriate, and the number of spots is a good guess:
+our errorbar scaling is appropriate, and the number of spots is a good guess,
+which we get from running `~pymc3.tuning.find_MAP` which finds the maximum
+a posteriori solution:
 
 .. code-block:: python
 
@@ -150,14 +152,15 @@ We'll sample the posterior distributions using the
         trace_nuts = pm.sample(start=map_soln, draws=1000, cores=2,
                                init='jitter+adapt_full')
 
-The values for ``draws`` and ``tune`` used above are chosen to produce quick
-plots, not to give converged publication-ready results. Always make these
-parameters as large as you can tolerate!
+where we use `~pymc3.sampling.sample` to draw samples from the posterior
+distribution. The value for ``draws`` used above are chosen to produce quick
+plots, not to give converged publication-ready results. Always make the
+``draws`` and ``tune`` parameters as large as you can tolerate!
 
 The ``init`` keyword argument is set to ``'jitter+adapt_full'``, and this is
-very important. This uses Daniel Foreman-Mackey's dense mass matrix setting
-which is critical for getting fast results from highly degenerate model
-parameterizations (like this one).
+very important. This uses `Daniel Foreman-Mackey's dense mass matrix setting
+<https://dfm.io/posts/pymc3-mass-matrix/>`_ which is critical for getting fast
+results from highly degenerate model parameterizations (like this one).
 
 Finally, let's plot our results:
 

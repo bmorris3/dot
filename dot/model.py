@@ -20,7 +20,7 @@ class MeanModel(pm.gp.mean.Mean):
         self.contrast = contrast
 
         self.f0 = pm.TruncatedNormal("f0", mu=0, sigma=1,
-                                     testval=np.percentile(light_curve.flux, 80),
+                                     testval=0,
                                      lower=-1, upper=2)
 
         self.eq_period = pm.TruncatedNormal("P_eq",
@@ -120,7 +120,7 @@ class Model(object):
     def __init__(self, light_curve, rotation_period, n_spots, scale_errors=1,
                  skip_n_points=1, latitude_cutoff=10, rho_factor=250,
                  verbose=False, min_time=None, max_time=None, contrast=0.7,
-                 partition_lon=False):
+                 partition_lon=True):
         """
         Construct a new instance of `~dot.Model`.
 
