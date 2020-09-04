@@ -155,12 +155,17 @@ We'll sample the posterior distributions using the
 where we use `~pymc3.sampling.sample` to draw samples from the posterior
 distribution. The value for ``draws`` used above are chosen to produce quick
 plots, not to give converged publication-ready results. Always make the
-``draws`` and ``tune`` parameters as large as you can tolerate!
+``draws`` parameter as large as you can tolerate!
 
 The ``init`` keyword argument is set to ``'jitter+adapt_full'``, and this is
 very important. This uses `Daniel Foreman-Mackey's dense mass matrix setting
 <https://dfm.io/posts/pymc3-mass-matrix/>`_ which is critical for getting fast
 results from highly degenerate model parameterizations (like this one).
+
+The ``init`` keyword argument is set to ``'jitter+adapt_full'``, and this is
+very important. This uses Daniel Foreman-Mackey's dense mass matrix setting
+which is critical for getting fast results from highly degenerate model
+parameterizations (like this one).
 
 Finally, let's plot our results:
 
