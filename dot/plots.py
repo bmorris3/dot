@@ -80,7 +80,7 @@ def posterior_shear(model, trace, path=None):
         Resulting figure and axis
     """
     fig, ax = plt.subplots(figsize=(4, 3))
-    ax.hist(trace['dot_shear'],
+    ax.hist(np.exp(trace['dot_ln_shear']),
             bins=25,
             range=[0, 0.6],
             color='k')
@@ -131,7 +131,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     """
     # Get median parameter values for system setup:
     n_spots = model.n_spots
-    shear = np.median(trace['dot_shear'])
+    shear = np.exp(np.median(trace['dot_ln_shear']))
     complement_to_inclination = np.median(trace['dot_comp_inc'])
     eq_period = np.median(trace['dot_P_eq'])
 

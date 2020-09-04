@@ -18,6 +18,7 @@ class MeanModel(pm.gp.mean.Mean):
         if contrast is None:
             contrast = pm.TruncatedNormal("contrast", lower=0.01, upper=0.99,
                                           testval=0.4, mu=0.5, sigma=0.5)
+        self.contrast = contrast
 
         self.f0 = pm.TruncatedNormal("f0", mu=0, sigma=1,
                                      testval=np.percentile(light_curve.flux, 80),
@@ -30,10 +31,10 @@ class MeanModel(pm.gp.mean.Mean):
                                             sigma=0.2 * rotation_period,
                                             testval=rotation_period)
 
-        eps = 1e-5  # Small but non-zero number
-        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
-        self.shear = BoundedHalfNormal("shear", sigma=0.2, testval=0.01)
+        self.ln_shear = pm.Uniform("ln_shear", lower=-5, upper=np.log(0.8),
+                                   testval=np.log(0.1))
 
+        eps = 1e-5  # Small but non-zero number
         self.comp_inclination = pm.Uniform("comp_inc",
                                            lower=np.radians(eps),
                                            upper=np.radians(90-eps),
@@ -60,19 +61,14 @@ class MeanModel(pm.gp.mean.Mean):
                               shape=(1, n_spots),
                               testval=np.pi/2)
 
+        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
         self.rspot = BoundedHalfNormal("R_spot",
                                        sigma=0.2,
                                        shape=(1, n_spots),
                                        testval=0.3)
-        self.contrast = contrast
 
-        # Need to wrap this equation with a where statement so that there isn't
-        # a divide by zero in the tensor math (even though these parameters are
-        # bounded to prevent this from happening during sampling)
-        self.spot_period = pm.math.where(self.shear < 1,
-                                         self.eq_period / (1 - self.shear *
-                                             pm.math.sin(self.lat - np.pi / 2) ** 2),
-                                         self.eq_period)
+        self.spot_period = self.eq_period / (1 - pm.math.exp(self.ln_shear) *
+                                             pm.math.sin(self.lat - np.pi / 2) ** 2)
         self.sin_lat = pm.math.sin(self.lat)
         self.cos_lat = pm.math.cos(self.lat)
         self.sin_c_inc = pm.math.sin(self.comp_inclination)
@@ -104,7 +100,7 @@ class MeanModel(pm.gp.mean.Mean):
         return spot_model
 
 
-class DisableLogger():
+class DisableLogger(object):
     """
     Simple logger disabler to minimize info-level messages during PyMC3
     integration

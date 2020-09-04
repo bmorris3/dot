@@ -61,7 +61,7 @@ def test_against_fleck(test_input, expected):
         "dot_lat": np.array([np.pi / 2 - lats]),
         "dot_lon": np.array([lons]),
         "dot_comp_inc": np.radians(90 - inc),
-        "dot_shear": 1e-2,
+        "dot_ln_shear": np.log(1e-2),
         "dot_P_eq": 2 * np.pi,
         "dot_f0": m.lc.flux.max()
     }
