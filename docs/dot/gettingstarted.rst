@@ -162,11 +162,6 @@ very important. This uses `Daniel Foreman-Mackey's dense mass matrix setting
 <https://dfm.io/posts/pymc3-mass-matrix/>`_ which is critical for getting fast
 results from highly degenerate model parameterizations (like this one).
 
-The ``init`` keyword argument is set to ``'jitter+adapt_full'``, and this is
-very important. This uses Daniel Foreman-Mackey's dense mass matrix setting
-which is critical for getting fast results from highly degenerate model
-parameterizations (like this one).
-
 Finally, let's plot our results:
 
 .. code-block:: python
