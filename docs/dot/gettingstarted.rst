@@ -88,12 +88,16 @@ our errorbar scaling is appropriate, and the number of spots is a good guess:
 
 .. code-block:: python
 
-    m.optimize(plot=True)
+    import pymc3 as pm
+
+    with m:
+        map_soln = pm.find_MAP()
 
 .. plot::
 
     import numpy as np
     from dot import ab_dor_example_lc, Model
+    import pymc3 as pm
 
     min_time = 0
     max_time = 2
@@ -112,10 +116,19 @@ our errorbar scaling is appropriate, and the number of spots is a good guess:
         skip_n_points=10,
         min_time=min_time,
         max_time=max_time,
-        scale_errors=10
+        scale_errors=3
     )
 
-    map_soln = m.optimize(plot=True)
+    with m:
+        map_soln = pm.find_MAP()
+
+    plt.errorbar(m.lc.time[m.mask], m.lc.flux[m.mask],
+                 m.scale_errors * m.lc.flux_err[m.mask], color='k',
+                 ecolor='silver', fmt='.')
+    plt.plot(m.lc.time[m.mask][::m.skip_n_points], m(map_soln),
+             color='DodgerBlue')
+    plt.gca().set(xlabel='Time [d]', ylabel='Flux')
+    plt.show()
 
 That fit looks pretty good for an initial guess with no manual-tuning and only
 two spots! It looks to me like the model probably has sufficient but not
@@ -125,28 +138,26 @@ distributions for the stellar and spot parameters.
 Sampling
 --------
 
-Next, we can sample the posterior distributions using the
-`Sequential Monte Carlo (SMC) <https://en.wikipedia.org/wiki/Particle_filter>`_
-sampler in `pymc3 <https://docs.pymc.io>`_ with:
-
-.. code-block:: python
-
-    trace_smc = m.sample_smc(draws=100)
-
-This will give us a quick fit to the light curve while exploring parameter
-degeneracies that were ignored in the first optimization step.
-
-Next we'll sample the posterior distributions using the
+We'll sample the posterior distributions using the
 `No U-Turn Sampler (NUTS) <https://arxiv.org/abs/1701.02434>`_ implemented by
-pymc3:
+`pymc3 <https://docs.pymc.io>`_ by using the normal syntax for pymc3:
 
 .. code-block:: python
 
-    trace_nuts, summary = m.sample_nuts(trace_smc, draws=1000, cores=2)
+    import pymc3 as pm
+
+    with m:
+        trace_nuts = pm.sample(start=map_soln, draws=1000, cores=2,
+                               init='jitter+adapt_full')
 
 The values for ``draws`` and ``tune`` used above are chosen to produce quick
 plots, not to give converged publication-ready results. Always make these
 parameters as large as you can tolerate!
+
+The ``init`` keyword argument is set to ``'jitter+adapt_full'``, and this is
+very important. This uses Daniel Foreman-Mackey's dense mass matrix setting
+which is critical for getting fast results from highly degenerate model
+parameterizations (like this one).
 
 Finally, let's plot our results:
 
@@ -160,9 +171,11 @@ Finally, let's plot our results:
 .. plot::
 
     import numpy as np
+    import matplotlib.pyplot as plt
+    import pymc3 as pm
+
     from dot import ab_dor_example_lc, Model
     from dot.plots import posterior_predictive
-    import matplotlib.pyplot as plt
 
     min_time = 0
     max_time = 2
@@ -181,12 +194,17 @@ Finally, let's plot our results:
         skip_n_points=10,
         min_time=min_time,
         max_time=max_time,
-        scale_errors=10
+        scale_errors=3
     )
 
-    trace_smc = m.sample_smc(draws=50)
-    trace_nuts, summary = m.sample_nuts(trace_smc, draws=10,
-                                        cores=2, tune=10)
+
+    with m:
+        map_soln = pm.find_MAP()
+
+    with m:
+        trace_nuts = pm.sample(start=map_soln, draws=100, tune=100, cores=2,
+                               init='jitter+adapt_full')
+
     fig, ax = posterior_predictive(m, trace_nuts, samples=10)
     ax.set_xlim([min_time, max_time])
     fig.tight_layout()
