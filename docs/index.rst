@@ -16,6 +16,7 @@ is `available on GitHub <https://github.com/bmorris3/dot>`_.
 
   dot/install.rst
   dot/gettingstarted.rst
+  dot/forwardmodel.rst
   dot/plots.rst
   dot/index.rst
   dot/dev.rst

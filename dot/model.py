@@ -2,7 +2,6 @@ import logging
 
 import numpy as np
 import pymc3 as pm
-from pymc3.smc import sample_smc
 
 __all__ = ['Model']
 
@@ -21,7 +20,7 @@ class MeanModel(pm.gp.mean.Mean):
         self.contrast = contrast
 
         self.f0 = pm.TruncatedNormal("f0", mu=0, sigma=1,
-                                     testval=np.percentile(light_curve.flux, 80),
+                                     testval=0,
                                      lower=-1, upper=2)
 
         self.eq_period = pm.TruncatedNormal("P_eq",
@@ -34,10 +33,9 @@ class MeanModel(pm.gp.mean.Mean):
         self.ln_shear = pm.Uniform("ln_shear", lower=-5, upper=np.log(0.8),
                                    testval=np.log(0.1))
 
-        eps = 1e-5  # Small but non-zero number
         self.comp_inclination = pm.Uniform("comp_inc",
-                                           lower=np.radians(eps),
-                                           upper=np.radians(90-eps),
+                                           lower=0,
+                                           upper=np.pi/2,
                                            testval=np.radians(1))
 
         if partition_lon:
@@ -61,6 +59,7 @@ class MeanModel(pm.gp.mean.Mean):
                               shape=(1, n_spots),
                               testval=np.pi/2)
 
+        eps = 1e-5  # Small but non-zero number
         BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
         self.rspot = BoundedHalfNormal("R_spot",
                                        sigma=0.2,
@@ -121,7 +120,7 @@ class Model(object):
     def __init__(self, light_curve, rotation_period, n_spots, scale_errors=1,
                  skip_n_points=1, latitude_cutoff=10, rho_factor=250,
                  verbose=False, min_time=None, max_time=None, contrast=0.7,
-                 partition_lon=False):
+                 partition_lon=True):
         """
         Construct a new instance of `~dot.Model`.
 
@@ -243,91 +242,6 @@ class Model(object):
         """
         if self.pymc_model is None:
             raise ValueError('Must first call `Model._initialize_model` first.')
-
-    def sample_smc(self, draws, random_seed=42, **kwargs):
-        """
-        Sample the posterior distribution of the model given the data using
-        Sequential Monte Carlo.
-
-        Parameters
-        ----------
-        draws : int
-            Draws for the SMC sampler
-        random_seed : int
-            Random seed
-        parallel : bool
-            If True, run in parallel
-        cores : int
-            If `parallel`, run on this many cores
-
-        Returns
-        -------
-        trace : `~pymc3.backends.base.MultiTrace`
-        """
-        self._check_model()
-        with DisableLogger(self.verbose):
-            with self.pymc_model:
-                trace = sample_smc(draws, random_seed=random_seed, **kwargs)
-        return trace
-
-    def sample_nuts(self, trace_smc, draws, cores=96,
-                    target_accept=0.99, **kwargs):
-        """
-        Sample the posterior distribution of the model given the data using
-        the No U-Turn Sampler.
-
-        Parameters
-        ----------
-        trace_smc : `~pymc3.backends.base.MultiTrace`
-            Results from the SMC sampler
-        draws : int
-            Draws for the SMC sampler
-        cores : int
-            Run on this many cores
-        target_accept : float
-            Increase this number up to unity to decrease divergences
-
-        Returns
-        -------
-        trace : `~pymc3.backends.base.MultiTrace`
-            Results of the NUTS sampler
-        """
-        self._check_model()
-        with DisableLogger(self.verbose):
-            with self.pymc_model:
-                trace = pm.sample(draws,
-                                  start=trace_smc.point(-1), cores=cores,
-                                  target_accept=target_accept, **kwargs)
-                summary = pm.summary(trace)
-
-        return trace, summary
-
-    def optimize(self, start=None, plot=False, **kwargs):
-        """
-        Optimize the free parameters in `Model` using
-        `~scipy.optimize.minimize` via `~exoplanet.optimize`
-
-        Thanks x1000 to Daniel Foreman-Mackey for making this possible.
-        """
-        from exoplanet import optimize
-
-        with self.pymc_model:
-            map_soln = optimize(start=start, **kwargs)
-
-        if plot:
-            best_fit = self(map_soln)
-
-            import matplotlib.pyplot as plt
-            ax = plt.gca()
-            ax.errorbar(self.lc.time[self.mask][::self.skip_n_points],
-                        self.lc.flux[self.mask][::self.skip_n_points],
-                        self.lc.flux_err[self.mask][::self.skip_n_points],
-                        fmt='.', color='k', ecolor='silver', label='obs')
-            ax.plot(self.lc.time[self.mask][::self.skip_n_points],
-                    best_fit, label='dot')
-            ax.set(xlabel='Time', ylabel='Flux')
-            ax.legend(loc='lower left')
-        return map_soln
 
     def __call__(self, point=None, **kwargs):
         """
