@@ -78,7 +78,7 @@ class MeanModel(object):
         self.t0 = t0
 
     def __call__(self, X):
-        phi = 2 * np.pi / self.spot_period * (tt.as_tensor_variable(X[:, None])
+        phi = 2 * np.pi / self.spot_period * (X[:, None]
                                               - self.t0) - self.lon
 
         spot_position_x = (pm.math.cos(phi - np.pi / 2) *
