@@ -11,13 +11,12 @@ sys.setrecursionlimit(int(1e6))
 __all__ = ['Model']
 
 
-class MeanModel:# (pm.gp.mean.Mean):
+class MeanModel(object):
     """
     Mean model for Gaussian process regression on photometry with starspots
     """
     def __init__(self, light_curve, rotation_period, n_spots, contrast, t0,
                  latitude_cutoff=10, partition_lon=True):
-        # pm.gp.mean.Mean.__init__(self)
 
         if contrast is None:
             contrast = pm.TruncatedNormal("contrast", lower=0.01, upper=0.99,
@@ -35,8 +34,9 @@ class MeanModel:# (pm.gp.mean.Mean):
                                             sigma=0.2 * rotation_period,
                                             testval=rotation_period)
 
-        self.ln_shear = pm.Uniform("ln_shear", lower=-5, upper=np.log(0.8),
-                                   testval=np.log(0.1))
+        eps = 1e-5  # Small but non-zero number
+        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
+        self.shear = BoundedHalfNormal("shear", testval=0.1)
 
         self.comp_inclination = pm.Uniform("comp_inc",
                                            lower=0,
@@ -64,14 +64,12 @@ class MeanModel:# (pm.gp.mean.Mean):
                               shape=(1, n_spots),
                               testval=np.pi/2)
 
-        eps = 1e-5  # Small but non-zero number
-        BoundedHalfNormal = pm.Bound(pm.HalfNormal, lower=eps, upper=0.8)
         self.rspot = BoundedHalfNormal("R_spot",
                                        sigma=0.2,
                                        shape=(1, n_spots),
                                        testval=0.3)
 
-        self.spot_period = self.eq_period / (1 - pm.math.exp(self.ln_shear) *
+        self.spot_period = self.eq_period / (1 - self.shear *
                                              pm.math.sin(self.lat - np.pi / 2) ** 2)
         self.sin_lat = pm.math.sin(self.lat)
         self.cos_lat = pm.math.cos(self.lat)
@@ -252,7 +250,7 @@ class Model(object):
         with self.pymc_model:
             mu, var = eval_in_model(
                 self.gp.predict(self.lc.time[self.mask][::self.skip_n_points],
-                                return_var=True, predict_mean=True), point
+                                return_var=True), point
             )
 
             mean_eval = eval_in_model(
