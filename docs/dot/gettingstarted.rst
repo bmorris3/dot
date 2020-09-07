@@ -124,10 +124,12 @@ a posteriori solution:
     with m:
         map_soln = pm.find_MAP()
 
+    fit, var = m(map_soln)
+
     plt.errorbar(m.lc.time[m.mask], m.lc.flux[m.mask],
                  m.scale_errors * m.lc.flux_err[m.mask], color='k',
                  ecolor='silver', fmt='.')
-    plt.plot(m.lc.time[m.mask][::m.skip_n_points], m(map_soln),
+    plt.plot(m.lc.time[m.mask][::m.skip_n_points], fit,
              color='DodgerBlue')
     plt.gca().set(xlabel='Time [d]', ylabel='Flux')
     plt.show()
@@ -158,7 +160,7 @@ plots, not to give converged publication-ready results. Always make the
 ``draws`` parameter as large as you can tolerate!
 
 The ``init`` keyword argument is set to ``'jitter+adapt_full'``, and this is
-very important. This uses `Daniel Foreman-Mackey's dense mass matrix setting
+important. This uses `Daniel Foreman-Mackey's dense mass matrix setting
 <https://dfm.io/posts/pymc3-mass-matrix/>`_ which is critical for getting fast
 results from highly degenerate model parameterizations (like this one).
 

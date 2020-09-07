@@ -22,7 +22,7 @@ def corner(trace, **kwargs):
     return dfm_corner(pm.trace_to_dataframe(trace), **kwargs)
 
 
-def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
+def posterior_predictive(model, trace, samples=10, path=None, **kwargs):
     """
     Take draws from the posterior predictive given a trace and a model.
 
@@ -42,23 +42,29 @@ def posterior_predictive(model, trace, samples=100, path=None, **kwargs):
     fig, ax : `~matplotlib.figure.Figure`, `~matplotlib.axes.Axes`
         Resulting figure and axis
     """
-    with model:
-        ppc = pm.sample_posterior_predictive(trace, samples=samples,
-                                             **kwargs)
-
     fig, ax = plt.subplots(figsize=(10, 2.5))
-    plt.errorbar(model.lc.time,
+    ax.errorbar(model.lc.time,
                  model.lc.flux,
                  model.lc.flux_err,
                  fmt='.', color='k', ecolor='silver')
 
-    plt.plot(model.lc.time[model.mask][::model.skip_n_points],
-             ppc['dot_y'].T,
-             color='DodgerBlue', lw=2, alpha=10/samples)
+    x = model.lc.time[model.mask][::model.skip_n_points]
 
-    plt.gca().set(xlabel='Time [d]', ylabel='Flux',
-                  xlim=[model.lc.time[model.mask].min(),
-                        model.lc.time[model.mask].max()])
+    for i in np.random.randint(0, len(trace), size=samples):
+        with model:
+            mu, var = eval_in_model(
+                model.gp.predict(x, return_var=True), trace[i]
+            )
+            mean_eval = eval_in_model(
+                model.mean_model, trace[i]
+            )
+
+        ax.fill_between(x, mu + np.sqrt(var) + mean_eval,
+                        mu - np.sqrt(var) + mean_eval, alpha=0.2)
+
+    ax.set(xlabel='Time [d]', ylabel='Flux',
+           xlim=[model.lc.time[model.mask].min(),
+                 model.lc.time[model.mask].max()])
     if path is not None:
         fig.savefig(path, bbox_inches='tight')
     return fig, ax
@@ -81,7 +87,7 @@ def posterior_shear(model, trace, path=None):
         Resulting figure and axis
     """
     fig, ax = plt.subplots(figsize=(4, 3))
-    ax.hist(np.exp(trace['dot_ln_shear']),
+    ax.hist(np.exp(trace['dot_shear']),
             bins=25,
             range=[0, 0.6],
             color='k')
@@ -132,7 +138,7 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     """
     # Get median parameter values for system setup:
     n_spots = model.n_spots
-    shear = np.exp(np.median(trace['dot_ln_shear']))
+    shear = np.median(trace['dot_shear'])
     complement_to_inclination = np.median(trace['dot_comp_inc'])
     eq_period = np.median(trace['dot_P_eq'])
 
@@ -280,49 +286,6 @@ def movie(results_dir, model, trace, xsize=250, fps=10,
     print('done')
 
     return fig, m
-
-
-def last_step(model, trace, x=None):
-    """
-    Plot the last step in the trace, including the GP prediction.
-
-    Parameters
-    ----------
-    model : `~dot.Model`
-        Model object
-    trace : `~pymc3.backends.base.MultiTrace`
-        Trace from SMC/NUTS
-    """
-    if x is None:
-        x = model.lc.time[model.mask][::model.skip_n_points][:, None]
-
-    if len(x.shape) < 2:
-        x = x[:, None]
-
-    x_data = model.lc.time[model.mask][::model.skip_n_points]
-    y_data = model.lc.flux[model.mask][::model.skip_n_points]
-    yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
-
-    given = {
-         "gp": model.pymc_gp,
-         "X": x_data[:, None],
-         "y": y_data,
-         "noise": yerr_data
-    }
-
-    mu, var = model.pymc_gp.predict(x,
-        point=trace[-1],
-        given=given,
-        diag=True,
-    )
-    sd = np.sqrt(var)
-    plt.fill_between(x, mu+sd, mu-sd, color='DodgerBlue', alpha=0.2)
-    plt.plot(x, mu, color='DodgerBlue')
-
-    plt.errorbar(x_data, y_data, yerr_data,
-                 fmt='.', color='k', ecolor='silver', zorder=10)
-
-    return plt.gca()
 
 
 def gp_from_posterior(model, trace_nuts, path=None):
