@@ -5,6 +5,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib import animation
 from corner import corner as dfm_corner
 import pymc3 as pm
+from exoplanet import eval_in_model
 
 __all__ = ['corner', 'posterior_predictive', 'movie', 'gp_from_posterior']
 
@@ -324,7 +325,7 @@ def last_step(model, trace, x=None):
     return plt.gca()
 
 
-def gp_from_posterior(model, trace_nuts, xnew, path):
+def gp_from_posterior(model, trace_nuts, path=None):
     """
     Plot a GP regression with the mean model defined in ``model``, drawn from
     the posterior distribution in ``trace_nuts``, at times ``xnew``.
@@ -341,34 +342,22 @@ def gp_from_posterior(model, trace_nuts, xnew, path):
         Save the resulting plot to ``path``
     """
     x_data = model.lc.time[model.mask][::model.skip_n_points]
-    y_data = model.lc.flux[model.mask][::model.skip_n_points]
-    yerr_data = model.scale_errors * model.lc.flux_err[model.mask][::model.skip_n_points]
 
-    given = {
-        "gp": model.pymc_gp,
-        "X": x_data[:, None],
-        "y": y_data,
-        "noise": yerr_data
-    }
+    plt.errorbar(model.lc.time, model.lc.flux,
+                 model.scale_errors * model.lc.flux_err,
+                 fmt='.', color='k')
+    for i in np.random.randint(0, len(trace_nuts), size=10):
+        with model:
+            mu, var = eval_in_model(
+                model.gp.predict(x_data, return_var=True), trace_nuts[i]
+            )
+            mean_eval = eval_in_model(
+                model.mean_model, trace_nuts[i]
+            )
 
-    mu, var = model.pymc_gp.predict(xnew[:, None],
-                                    point=trace_nuts[-1],
-                                    given=given,
-                                    diag=True
-                                    )
-    sd = np.sqrt(var)
-
-    plt.fill_between(xnew, 1 + mu + sd, 1 + mu - sd,
-                     color='DodgerBlue', alpha=0.5)
-
-    plt.errorbar(x_data, 1 + y_data, yerr_data,
-                 fmt='.', color='k', ecolor='silver', zorder=10)
-
-    residuals = y_data - np.interp(x_data, xnew, mu)
-    plt.errorbar(x_data,
-                 1 + residuals + 1.25 * y_data.min(),
-                 yerr_data,
-                 fmt='.', color='k', ecolor='silver')
+        plt.fill_between(x_data, mu + np.sqrt(var) + mean_eval,
+                         mu - np.sqrt(var) + mean_eval, color='DodgerBlue',
+                         alpha=0.2)
 
     plt.xlabel('Time [d]')
     plt.ylabel('Flux')

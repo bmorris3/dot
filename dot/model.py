@@ -2,17 +2,22 @@ import logging
 
 import numpy as np
 import pymc3 as pm
+from exoplanet.gp import terms, GP
+import theano.tensor as tt
+
+import sys
+sys.setrecursionlimit(int(1e6))
 
 __all__ = ['Model']
 
 
-class MeanModel(pm.gp.mean.Mean):
+class MeanModel:# (pm.gp.mean.Mean):
     """
     Mean model for Gaussian process regression on photometry with starspots
     """
     def __init__(self, light_curve, rotation_period, n_spots, contrast, t0,
                  latitude_cutoff=10, partition_lon=True):
-        pm.gp.mean.Mean.__init__(self)
+        # pm.gp.mean.Mean.__init__(self)
 
         if contrast is None:
             contrast = pm.TruncatedNormal("contrast", lower=0.01, upper=0.99,
@@ -75,7 +80,8 @@ class MeanModel(pm.gp.mean.Mean):
         self.t0 = t0
 
     def __call__(self, X):
-        phi = 2 * np.pi / self.spot_period * (X - self.t0) - self.lon
+        phi = 2 * np.pi / self.spot_period * (tt.as_tensor_variable(X[:, None])
+                                              - self.t0) - self.lon
 
         spot_position_x = (pm.math.cos(phi - np.pi / 2) *
                            self.sin_c_inc *
@@ -166,9 +172,7 @@ class Model(object):
         self.scale_errors = scale_errors
 
         self.pymc_model = None
-        self.pymc_gp = None
-        self.pymc_gp_white = None
-        self.pymc_gp_matern = None
+        self.gp = None
 
         self._initialize_model(latitude_cutoff=latitude_cutoff,
                                rho_factor=rho_factor,
@@ -205,22 +209,16 @@ class Model(object):
 
             ls = rho_factor * self.rotation_period
             mean_err = yerr.mean()
-            gp_white = pm.gp.Marginal(mean_func=mean_func,
-                                      cov_func=pm.gp.cov.WhiteNoise(mean_err))
-            gp_matern = pm.gp.Marginal(cov_func=mean_err ** 2 *
-                                       pm.gp.cov.Matern32(1, ls=ls))
 
-            gp = gp_white + gp_matern
+            # Set up the kernel an GP
+            kernel = terms.Matern32Term(sigma=mean_err, rho=ls)
+            gp = GP(kernel, x, yerr ** 2)
 
-            gp.marginal_likelihood("y", X=x[:, None], y=y, noise=yerr)
+            gp.marginal("gp", observed=y - mean_func(x))
 
         self.pymc_model = model
-        self.pymc_gp = gp
-        self.pymc_gp_white = gp_white
-        self.pymc_gp_matern = gp_matern
-        self.mean_model = mean_func(x[:, None])
-
-        return self.pymc_model
+        self.gp = gp
+        self.mean_model = mean_func(x)
 
     def __enter__(self):
         """
@@ -252,9 +250,13 @@ class Model(object):
         from exoplanet import eval_in_model
 
         with self.pymc_model:
-            result = eval_in_model(
-                self.mean_model,
-                point=point,
-                **kwargs
+            mu, var = eval_in_model(
+                self.gp.predict(self.lc.time[self.mask][::self.skip_n_points],
+                                return_var=True, predict_mean=True), point
             )
-        return result
+
+            mean_eval = eval_in_model(
+                self.mean_model, point
+            )
+
+        return mu + mean_eval, var
