@@ -3,10 +3,6 @@ import logging
 import numpy as np
 import pymc3 as pm
 from exoplanet.gp import terms, GP
-import theano.tensor as tt
-
-import sys
-sys.setrecursionlimit(int(1e6))
 
 __all__ = ['Model']
 
@@ -78,8 +74,7 @@ class MeanModel(object):
         self.t0 = t0
 
     def __call__(self, X):
-        phi = 2 * np.pi / self.spot_period * (X[:, None]
-                                              - self.t0) - self.lon
+        phi = 2 * np.pi / self.spot_period * (X[:, None] - self.t0) - self.lon
 
         spot_position_x = (pm.math.cos(phi - np.pi / 2) *
                            self.sin_c_inc *

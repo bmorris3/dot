@@ -44,9 +44,9 @@ def posterior_predictive(model, trace, samples=10, path=None, **kwargs):
     """
     fig, ax = plt.subplots(figsize=(10, 2.5))
     ax.errorbar(model.lc.time,
-                 model.lc.flux,
-                 model.lc.flux_err,
-                 fmt='.', color='k', ecolor='silver')
+                model.lc.flux,
+                model.lc.flux_err,
+                fmt='.', color='k', ecolor='silver')
 
     x = model.lc.time[model.mask][::model.skip_n_points]
 
