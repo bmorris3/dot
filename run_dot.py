@@ -12,7 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from dot import Model, save_results, load_results, ab_dor_example_lc, load_light_curve, load_rotation_period
+from dot import Model, save_results, load_results, ab_dor_example_lc, load_light_curve, load_rotation_period, period_finder_hardcorr
 from dot.plots import corner, posterior_shear,  posterior_predictive, movie
 
 import warnings
@@ -49,12 +49,6 @@ def run_dot(args):
     if mission=="Kepler":
         print(f'Loading light curve for KIC {target}...')
         lc = load_light_curve(target)
-        # Extract rotation periods
-        try:
-            rotation_period = load_rotation_period(target)
-        except:
-            print(f'Target KIC {target} does not have a McQuillan period.')
-            rotation_period = args.rotation_period
 
     else:
         # Get data from lightkurve
@@ -66,6 +60,25 @@ def run_dot(args):
             sector=sector
         ).download_all().PDCSAP_FLUX.stitch()
 
+    # --------Cleaning the light curve--------
+
+    lc = lc.remove_nans()
+    lc = lc.remove_outliers(sigma=5.0) # double check range for sigma clipping
+
+    # --------Extract rotation periods--------
+
+    if args.rotation_period is None:
+        try: # Load rotation period locally
+            rotation_period = load_rotation_period(target)
+        except:
+            print('Running ACF using hardcorr...')
+            rotation_period_list = period_finder_hardcorr(lc, n_peaks=1)
+            rotation_period = rotation_period_list[0]
+    else:
+        rotation_period = args.rotation_period
+
+    print(f'Rotation period: {rotation_period} days')
+        
     # --------Setting up model--------
 
     min_time = lc.time.min()
@@ -160,7 +173,7 @@ if __name__ == '__main__':
         "--sector", type=int, default=None, help="Quarter or Sector",
     )
     parser.add_argument(
-        "--rotation-period", type=float, default=0.5, help="Stellar rotation period",
+        "--rotation-period", type=float, default=None, help="Stellar rotation period",
     )
     # =================================
     # FIT PARAMS
@@ -175,7 +188,7 @@ if __name__ == '__main__':
         "--limit-duration", type=int, default=2, help="Length of interval to fit in days",
     )
     parser.add_argument(
-        "--n-intervals", type=int, default=2, help="Number of time intervals to fit",
+        "--n-intervals", type=int, default=1, help="Number of time intervals to fit",
     )
     # =================================
     # SMC PARAMS
