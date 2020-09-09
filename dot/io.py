@@ -4,11 +4,13 @@ import numpy as np
 import math
 import pandas as pd
 from lightkurve import LightCurve, search_lightcurvefile
+from hardcorr import interpolated_acf
+from hardcorr import dominant_period
 import h5py
 
 
 __all__ = ['save_results', 'load_results', 'ab_dor_example_lc',
-           'load_light_curve', 'load_rotation_period']
+           'load_light_curve', 'load_rotation_period', 'period_finder_hardcorr']
 
 hdf5_archive_disk = '/110k_pdcsap/'
 hdf5_index_path = '110k_rotation_mcquillan_pdcsap_smooth_index_0724.csv'
@@ -162,7 +164,7 @@ def download_from_lightkurve(kic):
 
 def load_rotation_period(kic, data_path=None, index_file=None):
     """
-    Extract McQuillan rotation period from KIC number on google cloud platform.
+    Extract McQuillan rotation period from csv file on google cloud platform.
 
     Parameters
     ----------
@@ -197,3 +199,27 @@ def load_rotation_period(kic, data_path=None, index_file=None):
         print(f'Using McQuillan period for KIC {kic}.')
         star_prot = star_prot_list[0]
         return star_prot
+
+
+def period_finder_hardcorr(lc, n_peaks=1):
+    """
+    Run auto-correlation function using hardcorr to determine rotation period.
+    
+    Parameters
+    ----------
+    lc : array
+        light curve object
+    Returns
+    -------
+    period_list : list
+        list of n_peaks dominant rotation period as determined through ACF
+    """
+
+    time = lc.time
+    flux = np.array([f/np.nanmedian(lc.flux) - 1 for f in lc.flux]) # normalize around 0
+    
+    lag, acf = interpolated_acf(time[~np.isnan(flux)], flux[~np.isnan(flux)])
+    period_list = [dominant_period(lag, acf, n_peaks=n_peaks)]
+    return period_list
+
+
