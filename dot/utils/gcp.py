@@ -1,9 +1,22 @@
 from pathlib import Path
 from google.cloud import storage
+import pickle
 
 
 def get_home_dir():
     return str(Path.home())
+
+
+def save_pkl(data, file) -> None:
+    with open(f"{file}.pkl", "wb") as buff:
+        pickle.dump(data, buff)
+    return None
+
+
+# def save_summary(summary: pd.DataFrame, file_path: str, name: str = "summary") -> None:
+
+#     summary.to_pickle(os.path.join(file_path, f"{name}.pkl"))
+#     return None
 
 
 def create_folder(directory: str) -> None:

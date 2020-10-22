@@ -5,16 +5,23 @@ import math
 import pandas as pd
 from lightkurve import LightCurve, search_lightcurvefile
 import h5py
+import dot
+from pymc3.backends.base import MultiTrace
 
 
-__all__ = ['save_results', 'load_results', 'ab_dor_example_lc',
-           'load_light_curve', 'load_rotation_period']
+__all__ = [
+    "save_results",
+    "load_results",
+    "ab_dor_example_lc",
+    "load_light_curve",
+    "load_rotation_period",
+]
 
-hdf5_archive_disk = '/110k_pdcsap/'
-hdf5_index_path = '110k_rotation_mcquillan_pdcsap_smooth_index_0724.csv'
+hdf5_archive_disk = "/110k_pdcsap/"
+hdf5_index_path = "110k_rotation_mcquillan_pdcsap_smooth_index_0724.csv"
 
 
-def save_results(name, model, trace, summary):
+def save_results(name, model, trace, summary=None):
     """
     Save a trace to a pickle file.
 
@@ -29,13 +36,14 @@ def save_results(name, model, trace, summary):
     summary : `~pandas.DataFrame`
         Dataframe containing summary statistics
     """
-    with open(os.path.join(name, 'model.pkl'), 'wb') as buff:
+    with open(os.path.join(name, "model.pkl"), "wb") as buff:
         pickle.dump(model, buff)
 
-    with open(os.path.join(name, 'trace_nuts.pkl'), 'wb') as buff:
+    with open(os.path.join(name, "trace.pkl"), "wb") as buff:
         pickle.dump(trace, buff)
 
-    summary.to_pickle(os.path.join(name, 'summary.pkl'))
+    summary.to_pickle(os.path.join(name, "summary.pkl"))
+
 
 
 def load_results(name):
@@ -56,13 +64,13 @@ def load_results(name):
     summary : `~pandas.DataFrame`
         Dataframe containing summary statistics
     """
-    with open(os.path.join(name, 'model.pkl'), 'rb') as buff:
+    with open(os.path.join(name, "model.pkl"), "rb") as buff:
         model = pickle.load(buff)
 
-    with open(os.path.join(name, 'trace_nuts.pkl'), 'rb') as buff:
+    with open(os.path.join(name, "trace_nuts.pkl"), "rb") as buff:
         trace_nuts = pickle.load(buff)
 
-    summary = pd.read_pickle(os.path.join(name, 'summary.pkl'))
+    summary = pd.read_pickle(os.path.join(name, "summary.pkl"))
 
     return model, trace_nuts, summary
 
@@ -83,8 +91,7 @@ def ab_dor_example_lc(path=None):
         Light curve of AB Doradus
     """
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), 'data',
-                            'abdor_lc_example.npy')
+        path = os.path.join(os.path.dirname(__file__), "data", "abdor_lc_example.npy")
     return LightCurve(*np.load(path))
 
 
@@ -102,8 +109,7 @@ def load_light_curve(kic):
     lc : `~lightkurve.lightcurve.LightCurve`
         PDCSAP light curve object
     """
-    on_gcp = os.path.exists(os.path.join(hdf5_archive_disk,
-                                         hdf5_index_path))
+    on_gcp = os.path.exists(os.path.join(hdf5_archive_disk, hdf5_index_path))
     # If on Google Cloud
     if on_gcp:
         try:
@@ -134,7 +140,7 @@ def load_from_hdf5(kic, data_path=None, index_file=None):
 
     star_path_list = stars_index.loc[stars_index["KIC"] == kic]["filepath"].values
     if len(star_path_list) == 0:
-        raise ValueError(f'Target KIC {kic} not in database.')
+        raise ValueError(f"Target KIC {kic} not in database.")
     star_path = star_path_list[0]
 
     with h5py.File(os.path.join(data_path, star_path), "r") as f:
@@ -142,9 +148,7 @@ def load_from_hdf5(kic, data_path=None, index_file=None):
         flux = np.array(f[str(kic)].get("PDC_SAP_flux"))
         flux_err = np.array(f[str(kic)].get("PDC_SAP_flux_err"))
 
-    pdcsap = LightCurve(
-        time=time, flux=flux, flux_err=flux_err, targetid=kic
-    )
+    pdcsap = LightCurve(time=time, flux=flux, flux_err=flux_err, targetid=kic)
 
     return pdcsap
 
@@ -153,10 +157,11 @@ def download_from_lightkurve(kic):
     """
     Download a light curve from lightkurve
     """
-    lc = search_lightcurvefile(
-        target=f"KIC {kic}",
-        mission='Kepler'
-    ).download_all().PDCSAP_FLUX.stitch()
+    lc = (
+        search_lightcurvefile(target=f"KIC {kic}", mission="Kepler")
+        .download_all()
+        .PDCSAP_FLUX.stitch()
+    )
     return lc
 
 
@@ -192,8 +197,8 @@ def load_rotation_period(kic, data_path=None, index_file=None):
     stars_index = pd.read_csv(index_path)
     star_prot_list = stars_index.loc[stars_index["KIC"] == kic]["PRot"].values
     if not math.isfinite(star_prot_list[0]):
-        raise ValueError(f'Target KIC {kic} does not have a McQuillan period.')
+        raise ValueError(f"Target KIC {kic} does not have a McQuillan period.")
     else:
-        print(f'Using McQuillan period for KIC {kic}.')
+        print(f"Using McQuillan period for KIC {kic}.")
         star_prot = star_prot_list[0]
         return star_prot
