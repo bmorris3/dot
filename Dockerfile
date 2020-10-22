@@ -43,7 +43,7 @@ RUN curl -sLo ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-late
     && rm ~/miniconda.sh
 
 # Install Conda Environment 
-RUN conda env update -f environment.yml -n base --prune
+RUN conda env update -f environment_gcp.yml -n base --prune
 
 #  Check environments and versions
 ENV PYTHONPATH="/app"
