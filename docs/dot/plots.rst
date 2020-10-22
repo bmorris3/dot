@@ -16,7 +16,6 @@ the one below:
 
     m, trace_nuts, summary = load_results(results_dir)
 
-    posterior_shear(m, trace_nuts)
     movie(results_dir, m, trace_nuts, xsize=250)
 
 .. raw:: html

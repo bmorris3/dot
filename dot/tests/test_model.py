@@ -19,7 +19,7 @@ inc_grid = 90 * np.random.rand(n_trials)
 
 # This decorator at the top allows us to iterate over the various pairs
 # of spot lons, lats, rads, and stellar inclinations. We compare the result
-# of the chi^2 computation with the 1e-9 and make sure it's smaller, i.e.
+# of the chi^2 computation with the 1e-6 and make sure it's smaller, i.e.
 # we test for excellent agreement between fleck and dot.
 @pytest.mark.parametrize("test_input,expected",
                          [((lons, lats, rads, inc), -6)
@@ -61,7 +61,7 @@ def test_against_fleck(test_input, expected):
         "dot_lat": np.array([np.pi / 2 - lats]),
         "dot_lon": np.array([lons]),
         "dot_comp_inc": np.radians(90 - inc),
-        "dot_shear": 1e-2,
+        "dot_shear": 1e-4,
         "dot_P_eq": 2 * np.pi,
         "dot_f0": m.lc.flux.max()
     }
@@ -70,7 +70,7 @@ def test_against_fleck(test_input, expected):
     pm.util.update_start_vals(start, m.pymc_model.test_point, m.pymc_model)
 
     # the fit is not normalized to its median like the input light curve is
-    fit = m(start)
+    fit, var = m(start)
     # ...so we normalize it before we compare:
     fit -= np.median(fit)
 
