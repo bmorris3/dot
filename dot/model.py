@@ -2,7 +2,8 @@ import logging
 
 import numpy as np
 import pymc3 as pm
-from exoplanet.gp import terms, GP
+# from exoplanet.gp import terms, GP
+from celerite2 import terms, GaussianProcess
 
 __all__ = ['Model']
 
@@ -202,12 +203,13 @@ class Model(object):
 
             ls = rho_factor * self.rotation_period
             mean_err = yerr.mean()
+            sigma = pm.HalfNormal("sigma", sigma=mean_err)
 
             # Set up the kernel an GP
-            kernel = terms.Matern32Term(sigma=mean_err, rho=ls)
-            gp = GP(kernel, x, yerr ** 2)
+            kernel = terms.Matern32Term(sigma=sigma, rho=ls)
+            gp = GaussianProcess(kernel, x, yerr ** 2)
 
-            gp.marginal("gp", observed=y - mean_func(x))
+            gp.marginal("gp", observed=y, mu=mean_func(x))
 
         self.pymc_model = model
         self.gp = gp
