@@ -68,7 +68,7 @@ We can now call our model on the start dictionary, and plot it like so:
 
     import matplotlib.pyplot as plt
 
-    forward_model_start = m(start_params)
+    forward_model_start, var = m(start_params)
 
     plt.plot(m.lc.time[m.mask], m.lc.flux[m.mask], m.lc.flux_err[m.mask],
              color='k', fmt='.', ecolor='silver')
@@ -114,7 +114,7 @@ We can now call our model on the start dictionary, and plot it like so:
 
     import matplotlib.pyplot as plt
 
-    forward_model_start = m(start_params)
+    forward_model_start, var = m(start_params)
 
     plt.plot(m.lc.time[m.mask][::m.skip_n_points], forward_model_start,
              color='DodgerBlue')
@@ -191,7 +191,7 @@ rate. This time when we plot the result we'll see a more complicated model:
 
     import matplotlib.pyplot as plt
 
-    forward_model_two = m(two_spot_params)
+    forward_model_two, var = m(two_spot_params)
 
     plt.plot(m.lc.time[m.mask][::m.skip_n_points], forward_model_two,
              color='DodgerBlue')
