@@ -304,7 +304,7 @@ def gp_from_posterior(model, trace_nuts, path=None):
     path : None or str
         Save the resulting plot to ``path``
     """
-    x_data = model.lc.time[model.mask][::model.skip_n_points]
+    x_data = np.ascontiguousarray(model.lc.time[model.mask][::model.skip_n_points], dtype='float64')
 
     plt.errorbar(model.lc.time, model.lc.flux,
                  model.scale_errors * model.lc.flux_err,
